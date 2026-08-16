@@ -62,6 +62,20 @@ const ElectronAPI = {
 
   newTab: () => send("newTab", undefined),
 
+  refreshBrowser: () => send("browserRefresh", undefined),
+
+  openBrowserFile: (path: string) => send("browserOpen", { path }),
+
+  previewSample: (path: string) => send("browserPreview", { path }),
+
+  copyText: (value: string) => send("browserCopy", { value }),
+
+  onBrowserTree: listen("browserTree"),
+
+  onBrowserSample: listen("browserSample"),
+
+  onBrowserError: listen("browserError"),
+
   onClose: listen("close"),
 
   onSetCurrent: listen("setCurrent"),

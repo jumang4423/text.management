@@ -16,6 +16,7 @@ interface MenuEvents {
   rebootTidal?: BrowserWindow;
   aboutTidal?: BrowserWindow;
   toggleConsole?: BrowserWindow;
+  refreshBrowser?: BrowserWindow;
 }
 
 class ElectronMenu extends EventEmitter<MenuEvents> {
@@ -203,6 +204,11 @@ class ElectronMenu extends EventEmitter<MenuEvents> {
             label: "Toggle Console",
             accelerator: "CommandOrControl+`",
             click: (_, window) => this.emit("toggleConsole", window),
+          },
+          {
+            label: "Refresh File Browser",
+            accelerator: "CommandOrControl+Shift+R",
+            click: (_, window) => this.emit("refreshBrowser", window),
           },
           { type: "separator" },
           { role: "resetZoom" },

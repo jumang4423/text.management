@@ -22,6 +22,10 @@ import {
   highlightTickEffect,
   highlightAddEffect,
   highlightSetField,
+  heatmapAddEffect,
+  heatmapHalfLifeMs,
+  heatmapNowField,
+  heatmapSetField,
 } from "./state";
 
 export function evaluationWithHighlights(
@@ -125,7 +129,10 @@ export function highlighter(api: typeof ElectronAPI): Extension {
 
       if (toAdd.length) {
         effects.push(highlightAddEffect.of(toAdd));
+        effects.push(heatmapAddEffect.of(toAdd));
       }
+
+      pendingHighlights = stillPending;
 
       if (effects.length) {
         view.dispatch({ effects });
@@ -147,24 +154,46 @@ export function highlighter(api: typeof ElectronAPI): Extension {
   return [
     highlighterPlugin,
     highlightSetField,
+    heatmapSetField,
+    heatmapNowField,
+    Prec.lowest(heatmapDecorations),
     Prec.highest(highlightDecorations),
   ];
 }
 
+const activeHighlightStyle =
+  "box-shadow: inset 0 -0.14em 0 var(--color-livecode-active-event-background); color: var(--color-foreground)";
+const startleDurationMs = 140;
+
 const highlightDecoration = Decoration.mark({
   attributes: {
-    style:
-      "background-color: var(--color-livecode-active-event-background); color: var(--color-foreground-inverted)",
+    style: activeHighlightStyle,
   },
 });
 
+function decorationForHighlight(
+  highlight: TimestampedHighlightEvent,
+  now: number
+) {
+  const age = Math.max(0, now - highlight.time);
+  if (age >= startleDurationMs) return highlightDecoration;
+
+  return Decoration.mark({
+    attributes: {
+      class: "cm-livecode-active-event",
+      style: `${activeHighlightStyle}; animation-delay: -${age.toFixed(1)}ms`,
+    },
+  });
+}
+
 const highlightDecorations = EditorView.decorations.compute(
-  [mininotationStringField, highlightSetField],
+  [mininotationStringField, highlightSetField, heatmapNowField],
   (state) => {
     const setBuilder = new RangeSetBuilder<Decoration>();
 
     const mininotationRanges = state.field(mininotationStringField);
     const currentHighlights = state.field(highlightSetField);
+    const now = state.field(heatmapNowField);
 
     let mininotationCursor = mininotationRanges.iter();
 
@@ -179,7 +208,7 @@ const highlightDecorations = EditorView.decorations.compute(
         setBuilder.add(
           highlight.from + from,
           highlight.to + from,
-          highlightDecoration
+          decorationForHighlight(highlight, now)
         );
       }
 
@@ -189,3 +218,74 @@ const highlightDecorations = EditorView.decorations.compute(
     return setBuilder.finish();
   }
 );
+
+const heatmapDecorations = EditorView.decorations.compute(
+  [mininotationStringField, heatmapSetField, heatmapNowField],
+  (state) => {
+    const decorations: Range<Decoration>[] = [];
+    const mininotationRanges = state.field(mininotationStringField);
+    const hits = state.field(heatmapSetField);
+    const now = state.field(heatmapNowField);
+    let mininotationCursor = mininotationRanges.iter();
+
+    while (mininotationCursor.value !== null) {
+      const { from, value: miniString } = mininotationCursor;
+
+      for (const hit of hits.filter(({ miniID }) => miniID === miniString.id)) {
+        const traces = [...hit.traces].sort((a, b) => a.phase - b.phase);
+        const stripeWidth = 100 / traces.length;
+        const gradientStops = traces.flatMap((trace, index) => {
+          const age = Math.max(0, now - trace.lastHit);
+          const fade = Math.pow(0.5, age / heatmapHalfLifeMs);
+          const density = Math.min(1, trace.activity / 4);
+          const alpha = (0.2 + density * 0.6) * fade;
+          const color = cycleColor(trace.phase, alpha);
+          const start = (index * stripeWidth).toFixed(2);
+          const end = ((index + 1) * stripeWidth).toFixed(2);
+          return [`${color} ${start}%`, `${color} ${end}%`];
+        });
+        const phaseSummary = traces
+          .map((trace) => formatPhase(trace.phase))
+          .join(", ");
+        const decoration = Decoration.mark({
+          attributes: {
+            class: "cm-pattern-heatmap",
+            style: `--heatmap-background: linear-gradient(90deg, ${gradientStops.join(", ")})`,
+            title: `Cycle phase ${phaseSummary}`,
+          },
+        });
+        decorations.push(decoration.range(hit.from + from, hit.to + from));
+      }
+
+      mininotationCursor.next();
+    }
+
+    return Decoration.set(decorations, true);
+  }
+);
+
+const cyclePalette = [
+  "#008000", // downbeat: CSS GREEN
+  "#6ED4E3",
+  "#94A1FF",
+  "#D4F357",
+  "#FFA020",
+];
+
+function cycleColor(phase: number, alpha: number) {
+  const paletteIndex =
+    Math.round(phase * cyclePalette.length) % cyclePalette.length;
+  const hex = cyclePalette[paletteIndex];
+  const red = parseInt(hex.slice(1, 3), 16);
+  const green = parseInt(hex.slice(3, 5), 16);
+  const blue = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${red} ${green} ${blue} / ${alpha.toFixed(3)})`;
+}
+
+function formatPhase(phase: number) {
+  const twelfths = Math.round(phase * 12);
+  if (twelfths === 0) return "0";
+
+  const divisor = [6, 4, 3, 2].find((value) => twelfths % value === 0) ?? 1;
+  return `${twelfths / divisor}/${12 / divisor}`;
+}

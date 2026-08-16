@@ -5,6 +5,14 @@ import { HighlightEvent } from "@management/lang-tidal";
 
 export type Handler<T> = (event: T) => void;
 
+export interface BrowserEntry {
+  kind: "folder" | "tidal" | "sample" | "file";
+  name: string;
+  path: string;
+  tidalName?: string;
+  children?: BrowserEntry[];
+}
+
 export interface ToMainChannels {
   current: { id: string | null };
   update: { withID: string; value: DocumentUpdate };
@@ -13,6 +21,10 @@ export interface ToMainChannels {
   restart: undefined;
   openTidalSettings: undefined;
   newTab: undefined;
+  browserRefresh: undefined;
+  browserOpen: { path: string };
+  browserPreview: { path: string };
+  browserCopy: { value: string };
 }
 
 export interface ToRendererChannels {
@@ -31,4 +43,7 @@ export interface ToRendererChannels {
   showAbout: string;
   tidalHighlight: HighlightEvent;
   settingsData: any;
+  browserTree: BrowserEntry[];
+  browserSample: { path: string; mime: string; data: Uint8Array };
+  browserError: string;
 }

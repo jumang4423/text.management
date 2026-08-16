@@ -17,6 +17,7 @@ import { ColorScheme } from "@core/extensions/theme/colors";
 import { fileSync } from "./file";
 import { EditorTabView } from "@core/extensions/layout/tabs/editor";
 import { AboutTabView } from "@core/extensions/layout/tabs/about";
+import { SampleFileBrowser } from "./browser";
 
 import {
   evaluationWithHighlights,
@@ -48,7 +49,12 @@ const background: string | null = null;
 
 export class Editor {
   constructor(parent: HTMLElement) {
-    let layout = new LayoutView(parent, api.setCurrent, api.newTab);
+    const workspace = parent.appendChild(document.createElement("div"));
+    workspace.className = "editor-workspace";
+    new SampleFileBrowser(workspace, api);
+    const editorMain = workspace.appendChild(document.createElement("main"));
+    editorMain.className = "editor-main";
+    let layout = new LayoutView(editorMain, api.setCurrent, api.newTab);
 
     if (background) {
       let canvas = parent.appendChild(document.createElement("iframe"));

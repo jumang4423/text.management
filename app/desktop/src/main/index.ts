@@ -1,6 +1,6 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, clipboard } from "electron";
 
-import { resolve } from "path";
+import { basename, extname, resolve } from "path";
 
 import fixPath from "fix-path";
 
@@ -20,10 +20,25 @@ import { Filesystem } from "./filesystem";
 import { wrapIPC } from "./ipcMain";
 
 import { menu } from "./menu";
+import type { BrowserEntry } from "../ipc";
 
 const filesystem = new Filesystem();
 
 const settingsPath = resolve(app.getPath("userData"), "settings.json");
+const tidalWorkspace = "/Users/jumang4423/sc-dotfiles";
+const browserRoots = [
+  resolve(tidalWorkspace, "sets"),
+  resolve(tidalWorkspace, "samples"),
+];
+const audioExtensions = new Set([
+  ".aif",
+  ".aiff",
+  ".flac",
+  ".m4a",
+  ".mp3",
+  ".ogg",
+  ".wav",
+]);
 
 const createWindow = (configuration: Config) => {
   const tidal = new GHCI(configuration);
@@ -110,6 +125,44 @@ const createWindow = (configuration: Config) => {
       })
     );
 
+    const sendBrowserTree = async () => {
+      try {
+        send("browserTree", await Promise.all(browserRoots.map(readBrowserRoot)));
+      } catch (error) {
+        send("browserError", `Could not read browser files: ${error}`);
+      }
+    };
+
+    listeners.push(listen("browserRefresh", sendBrowserTree));
+    listeners.push(menu.on("refreshBrowser", sendBrowserTree));
+    listeners.push(
+      listen("browserOpen", ({ path }) => {
+        if (isInsideBrowserRoots(path) && extname(path).toLowerCase() === ".tidal") {
+          filesystem.loadDoc(path);
+        }
+      })
+    );
+    listeners.push(
+      listen("browserPreview", async ({ path }) => {
+        try {
+          const extension = extname(path).toLowerCase();
+          if (!isInsideBrowserRoots(path) || !audioExtensions.has(extension)) {
+            throw new Error("Unsupported sample path");
+          }
+          send("browserSample", {
+            path,
+            mime: audioMime(extension),
+            data: new Uint8Array(await readFile(path)),
+          });
+        } catch (error) {
+          send("browserError", `Could not preview sample: ${error}`);
+        }
+      })
+    );
+    listeners.push(
+      listen("browserCopy", ({ value }) => clipboard.writeText(value))
+    );
+
     listeners.push(
       listen("requestClose", async ({ id }) => {
         await close({ window, id });
@@ -180,6 +233,7 @@ const createWindow = (configuration: Config) => {
     );
 
     send("settingsData", configuration.data);
+    void sendBrowserTree();
     listeners.push(
       configuration.on("change", (data) => {
         send("settingsData", data);
@@ -226,7 +280,78 @@ const createWindow = (configuration: Config) => {
   });
 };
 
-import { readFile } from "fs/promises";
+import { readFile, readdir } from "fs/promises";
+
+function isInsideBrowserRoots(path: string) {
+  const resolvedPath = resolve(path);
+  return browserRoots.some(
+    (root) => resolvedPath === root || resolvedPath.startsWith(`${root}/`)
+  );
+}
+
+async function readBrowserRoot(path: string): Promise<BrowserEntry> {
+  return {
+    kind: "folder",
+    name: basename(path),
+    path,
+    children: await readBrowserDirectory(path),
+  };
+}
+
+async function readBrowserDirectory(path: string): Promise<BrowserEntry[]> {
+  const entries = (await readdir(path, { withFileTypes: true })).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true })
+  );
+  const sampleBank = basename(path);
+  let sampleIndex = 0;
+
+  return Promise.all(
+    entries
+      .filter((entry) => !entry.name.startsWith("."))
+      .map(async (entry): Promise<BrowserEntry> => {
+        const entryPath = resolve(path, entry.name);
+        if (entry.isDirectory()) {
+          return {
+            kind: "folder",
+            name: entry.name,
+            path: entryPath,
+            children: await readBrowserDirectory(entryPath),
+          };
+        }
+
+        const extension = extname(entry.name).toLowerCase();
+        if (audioExtensions.has(extension)) {
+          const index = sampleIndex++;
+          return {
+            kind: "sample",
+            name: entry.name,
+            path: entryPath,
+            tidalName: `${sampleBank}:${index}`,
+          };
+        }
+
+        return {
+          kind: extension === ".tidal" ? "tidal" : "file",
+          name: entry.name,
+          path: entryPath,
+        };
+      })
+  );
+}
+
+function audioMime(extension: string) {
+  return (
+    {
+      ".aif": "audio/aiff",
+      ".aiff": "audio/aiff",
+      ".flac": "audio/flac",
+      ".m4a": "audio/mp4",
+      ".mp3": "audio/mpeg",
+      ".ogg": "audio/ogg",
+      ".wav": "audio/wav",
+    }[extension] ?? "application/octet-stream"
+  );
+}
 
 app.whenReady().then(async () => {
   if (process.platform === "darwin") {

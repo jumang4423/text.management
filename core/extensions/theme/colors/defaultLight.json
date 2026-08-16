@@ -6,13 +6,15 @@
   "errorBackground": "#edbdb79a",
   "errorForeground": "#cf3625",
   "selectionBackground": "#000000e0",
-  "livecode.activeEventBackground": "#c21769",
+  "livecode.activeEventBackground": "GREEN",
   "ui.background": "#ffffff72",
   "ui.backgroundInactive": "#ffffff40",
   "ui.backgroundActive": "#ffffffe6",
-  "syntax.operator": "#e0a016",
-  "syntax.string": "#0f91ea",
-  "syntax.number": "#9e38ad",
-  "syntax.bracket": "#328f84",
-  "syntax.keyword": "#bf528c"
+  "syntax.comment": "color-mix(in srgb, #BEC5BD 55%, BLACK)",
+  "syntax.variable": "BLACK",
+  "syntax.operator": "GREEN",
+  "syntax.string": "color-mix(in srgb, #6ED4E3 60%, BLACK)",
+  "syntax.number": "color-mix(in srgb, #94A1FF 68%, BLACK)",
+  "syntax.bracket": "color-mix(in srgb, #D4F357 55%, BLACK)",
+  "syntax.keyword": "color-mix(in srgb, #FFA020 70%, BLACK)"
 }

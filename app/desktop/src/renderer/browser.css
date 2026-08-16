@@ -1,0 +1,171 @@
+.editor-workspace {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  gap: var(--ui-space);
+}
+
+.editor-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.file-browser {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 240px;
+  min-width: 180px;
+  max-width: 65vw;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-ui-background-inactive);
+  font-size: var(--font-small);
+  line-height: var(--s-2);
+}
+
+.file-browser-resize-handle {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.file-browser-resize-handle::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  content: "";
+}
+
+.file-browser-resize-handle:hover::after,
+.file-browser.resizing .file-browser-resize-handle::after {
+  background: var(--color-livecode-active-event-background);
+}
+
+.file-browser header,
+.file-browser footer {
+  display: flex;
+  align-items: center;
+  min-height: var(--s-2-5);
+  padding: 0 var(--ui-space);
+  background: var(--color-ui-background);
+}
+
+.file-browser header {
+  justify-content: space-between;
+  cursor: default;
+  user-select: none;
+}
+
+.file-browser header button,
+.file-browser-row button {
+  appearance: none;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.file-browser header button:hover,
+.file-browser-row button:not(:disabled):hover,
+.file-browser summary:hover {
+  background: var(--color-ui-background);
+}
+
+.file-browser-tree {
+  flex: 1;
+  overflow: auto;
+  padding: var(--ui-space);
+}
+
+.file-browser details,
+.file-browser summary {
+  margin: 0;
+  padding: 0;
+}
+
+.file-browser summary {
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.file-browser-children {
+  margin-left: var(--s-1);
+}
+
+.file-browser-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.file-browser-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--ui-space);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-browser-row.tidal .file-browser-name::before {
+  content: "λ ";
+  color: var(--color-syntax-keyword);
+}
+
+.file-browser-row.sample .file-browser-name::before {
+  content: "▶ ";
+  color: var(--color-syntax-string);
+}
+
+.file-browser-tidal-name {
+  flex: none;
+  padding: 0 var(--ui-space);
+  color: var(--color-syntax-string) !important;
+}
+
+.file-browser footer {
+  overflow: hidden;
+  color: var(--color-syntax-comment);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-browser.minimized {
+  width: var(--s-2-5);
+  min-width: var(--s-2-5);
+  max-width: var(--s-2-5);
+}
+
+.file-browser.minimized .file-browser-resize-handle {
+  display: none;
+}
+
+.file-browser.minimized header {
+  box-sizing: border-box;
+  height: 100%;
+  justify-content: flex-start;
+  padding: var(--ui-space) 0;
+}
+
+.file-browser.minimized header span {
+  writing-mode: vertical-rl;
+}
+
+.file-browser.minimized .file-browser-tree,
+.file-browser.minimized footer {
+  display: none;
+}
