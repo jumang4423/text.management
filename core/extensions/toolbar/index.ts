@@ -2,6 +2,7 @@ import { showPanel, Panel } from "@codemirror/view";
 
 import { ElectronAPI } from "@core/api";
 import { Config } from "@core/state";
+import { dampedSpringKeyframes } from "@core/animation/spring";
 
 import { getTimer } from "./timer";
 
@@ -16,6 +17,10 @@ export function toolbarConstructor(
   toolbarNode.classList.add("cm-toolbar");
   toolbarNode.setAttribute("role", "menubar");
   toolbarNode.setAttribute("aria-label", "Editor Controls");
+
+  const heartbeat = toolbarNode.appendChild(document.createElement("div"));
+  heartbeat.className = "tidal-heartbeat";
+  heartbeat.setAttribute("aria-hidden", "true");
 
   let toolbarLeft = toolbarNode.appendChild(document.createElement("div"));
   toolbarLeft.classList.add("cm-toolbar-region");
@@ -55,6 +60,45 @@ export function toolbarConstructor(
   let tempoInfo = new ToolbarMenu(`◯ 0`, [], "timer");
   toolbarRight.appendChild(tempoInfo.dom);
 
+  let lastWholeCycle: number | undefined;
+  let sleeping = false;
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)"
+  );
+  const stopHeartbeatForReducedMotion = () => {
+    if (!reducedMotion.matches) return;
+    heartbeat.getAnimations().forEach((animation) => animation.cancel());
+  };
+  reducedMotion.addEventListener("change", stopHeartbeatForReducedMotion);
+
+  const pulseHeartbeat = () => {
+    heartbeat.getAnimations().forEach((animation) => animation.cancel());
+    if (sleeping || reducedMotion.matches) return;
+    const duration = 780;
+    heartbeat.animate(
+      dampedSpringKeyframes(
+        duration,
+        { stiffness: 380, damping: 8.2 },
+        ({ displacement, velocity, energy }) => {
+          const speed = Math.min(1.2, Math.abs(velocity));
+          const travel = Math.abs(displacement);
+          const scaleX = Math.max(0.35, 1 + displacement * 0.82);
+          const scaleY = 0.12 + travel * 0.96 + speed * 0.2;
+          const opacity = Math.min(
+            1,
+            energy * (travel * 0.82 + speed * 0.52)
+          );
+          return {
+            opacity,
+            transform: `scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`,
+            filter: `drop-shadow(0 0 ${(energy * 5).toFixed(3)}px rgb(212 243 87 / ${(energy * 0.72).toFixed(3)}))`,
+          };
+        }
+      ),
+      { duration, easing: "linear" }
+    );
+  };
+
   let offTidalNow = api.onTidalNow((cycle) => {
     cycle = Math.max(0, cycle);
     let whole = Math.floor(cycle);
@@ -64,6 +108,46 @@ export function toolbarConstructor(
     let modString = mods.map((mod) => `${whole % mod}/${mod}`).join(" ");
 
     tempoInfo.label = `${part} ${whole} ${modString}`;
+
+    if (whole !== lastWholeCycle) {
+      lastWholeCycle = whole;
+      pulseHeartbeat();
+    }
+  });
+
+  const hush = () => {
+    sleeping = true;
+    toolbarNode.classList.add("tidal-sleeping");
+    heartbeat.getAnimations().forEach((animation) => animation.cancel());
+    if (!reducedMotion.matches) {
+      const duration = 520;
+      heartbeat.animate(
+        dampedSpringKeyframes(
+          duration,
+          { stiffness: 280, damping: 10 },
+          ({ displacement }, progress) => {
+            const remaining = 1 - progress;
+            return {
+              opacity: remaining * (0.7 + Math.abs(displacement) * 0.15),
+              transform: `scale(${(
+                0.5 + remaining * 1.25 + displacement * 0.22
+              ).toFixed(4)}, ${(
+                0.04 + remaining * 0.56 + Math.abs(displacement) * 0.18
+              ).toFixed(4)})`,
+            };
+          }
+        ),
+        { duration, easing: "linear", fill: "forwards" }
+      );
+    }
+  };
+  document.addEventListener("text-management:tidal-hush", hush);
+
+  const offTidalHighlight = api.onTidalHighlight(() => {
+    if (!sleeping) return;
+    sleeping = false;
+    toolbarNode.classList.remove("tidal-sleeping");
+    pulseHeartbeat();
   });
 
   return {
@@ -71,6 +155,13 @@ export function toolbarConstructor(
     destroy() {
       offTidalVersion();
       offTidalNow();
+      offTidalHighlight();
+      heartbeat.getAnimations().forEach((animation) => animation.cancel());
+      reducedMotion.removeEventListener(
+        "change",
+        stopHeartbeatForReducedMotion
+      );
+      document.removeEventListener("text-management:tidal-hush", hush);
     },
   };
 }

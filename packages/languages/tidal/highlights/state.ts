@@ -69,18 +69,27 @@ export const mininotationStringField = StateField.define<
   },
 });
 
-export type TimestampedHighlightEvent = HighlightEvent & { time: number };
+export type TimestampedHighlightEvent = HighlightEvent & {
+  time: number;
+  surprise: number;
+};
+
+// The visual organism keeps settling after a short sound event has ended.
+// This is deliberately independent from HighlightEvent.duration.
+export const highlightReactionDurationMs = 780;
 
 export const highlightTickEffect = StateEffect.define<number>();
 
 export const highlightAddEffect =
   StateEffect.define<TimestampedHighlightEvent[]>();
+export const highlightClearEffect = StateEffect.define<void>();
 
 export interface HeatmapTrace {
   phase: number;
   lastHit: number;
   lastCycle: number;
   activity: number;
+  sleepAt?: number;
 }
 
 export interface HeatmapHit {
@@ -97,6 +106,7 @@ const heatmapActivityHalfLifeCycles = 2;
 
 export const heatmapAddEffect =
   StateEffect.define<TimestampedHighlightEvent[]>();
+export const heatmapSleepEffect = StateEffect.define<number>();
 
 export const heatmapSetField = StateField.define<HeatmapHit[]>({
   create: () => [],
@@ -107,10 +117,24 @@ export const heatmapSetField = StateField.define<HeatmapHit[]>({
           .map((hit) => ({
             ...hit,
             traces: hit.traces.filter(
-              (trace) => effect.value - trace.lastHit < heatmapDecayMs
+              (trace) =>
+                effect.value - trace.lastHit < heatmapDecayMs &&
+                (trace.sleepAt === undefined ||
+                  effect.value - trace.sleepAt < 470)
             ),
           }))
           .filter((hit) => hit.traces.length > 0);
+        continue;
+      }
+
+      if (effect.is(heatmapSleepEffect)) {
+        value = value.map((hit) => ({
+          ...hit,
+          traces: hit.traces.map((trace) => ({
+            ...trace,
+            sleepAt: effect.value,
+          })),
+        }));
         continue;
       }
 
@@ -150,6 +174,7 @@ export const heatmapSetField = StateField.define<HeatmapHit[]>({
           lastHit: event.time,
           lastCycle: rawCycle,
           activity: Math.min(8, decayedActivity + 1),
+          sleepAt: undefined,
         };
 
         if (traceIndex === -1) traces.push(trace);
@@ -186,11 +211,32 @@ export const highlightSetField = StateField.define({
     for (let effect of tr.effects) {
       if (effect.is(highlightTickEffect)) {
         const remaining = value.filter((event) => {
-          return event.time + event.duration >= effect.value;
+          return (
+            event.time +
+              Math.max(event.duration, highlightReactionDurationMs) >=
+            effect.value
+          );
         });
         if (remaining.length !== value.length) value = remaining;
       } else if (effect.is(highlightAddEffect)) {
-        value = value.concat(effect.value);
+        const eventsBySource = new Map<string, TimestampedHighlightEvent>();
+        for (const event of [...value, ...effect.value]) {
+          const key = `${event.miniID}:${event.from}:${event.to}`;
+          const previous = eventsBySource.get(key);
+          if (
+            !previous ||
+            event.time > previous.time ||
+            (event.time === previous.time &&
+              (event.surprise > previous.surprise ||
+                (event.surprise === previous.surprise &&
+                  event.duration > previous.duration)))
+          ) {
+            eventsBySource.set(key, event);
+          }
+        }
+        value = [...eventsBySource.values()];
+      } else if (effect.is(highlightClearEffect)) {
+        value = [];
       }
     }
 

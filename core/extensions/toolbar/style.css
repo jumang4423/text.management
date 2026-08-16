@@ -10,6 +10,30 @@
   background: var(--color-ui-background-inactive);
 }
 
+.tidal-heartbeat {
+  position: fixed;
+  z-index: 20;
+  top: var(--ui-space);
+  bottom: var(--ui-space);
+  left: var(--ui-space);
+  width: 2px;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #D4F357, GREEN);
+  transform: scale(1, 0.12);
+  transform-origin: 50% 100%;
+}
+
+.cm-toolbar.tidal-sleeping [role="timer"] {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tidal-heartbeat {
+    display: none;
+  }
+}
+
 .cm-toolbar-region {
   display: flex;
   gap: var(--ui-space);

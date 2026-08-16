@@ -1,5 +1,6 @@
 import type { ElectronAPI } from "../preload";
 import type { BrowserEntry } from "../ipc";
+import { dampedSpringKeyframes } from "@core/animation/spring";
 
 import "./browser.css";
 
@@ -9,6 +10,16 @@ export class SampleFileBrowser {
   private status: HTMLElement;
   private audio = new Audio();
   private audioURL: string | null = null;
+  private audioEnded: (() => void) | null = null;
+  private audioErrored: (() => void) | null = null;
+  private requestedSamplePath: string | null = null;
+  private requestedSampleRow: HTMLElement | null = null;
+  private playingSamplePath: string | null = null;
+  private playingSampleRow: HTMLElement | null = null;
+  private sampleRows = new Map<string, HTMLElement>();
+  private sampleReaction: Animation | null = null;
+  private playbackToken = 0;
+  private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   private expandedWidth = 240;
   private readonly minimumWidth = 180;
   private readonly widthStorageKey = "text-management:file-browser-width";
@@ -91,29 +102,97 @@ export class SampleFileBrowser {
     this.tree.className = "file-browser-tree";
     this.status = this.dom.appendChild(document.createElement("footer"));
     this.status.textContent = "Loading…";
+    this.reducedMotion.addEventListener("change", () => {
+      if (this.reducedMotion.matches) this.stopSampleReaction();
+    });
 
     this.api.onBrowserTree((entries) => this.render(entries));
     this.api.onBrowserError((message) => {
       this.status.textContent = message;
     });
     this.api.onBrowserSample(({ path, mime, data }) => {
-      if (this.audioURL) URL.revokeObjectURL(this.audioURL);
+      if (path !== this.requestedSamplePath || !this.requestedSampleRow) return;
+
+      const row = this.requestedSampleRow;
+      const token = ++this.playbackToken;
+      this.requestedSamplePath = null;
+      this.requestedSampleRow = null;
+
+      this.releaseAudioSource();
       const bytes = data.buffer.slice(
         data.byteOffset,
         data.byteOffset + data.byteLength
       ) as ArrayBuffer;
       this.audioURL = URL.createObjectURL(new Blob([bytes], { type: mime }));
       this.audio.src = this.audioURL;
-      void this.audio.play();
-      this.status.textContent = `▶ ${path.split("/").pop()}`;
+      this.playingSamplePath = path;
+      this.playingSampleRow = row;
+      this.audioEnded = () => {
+        if (token !== this.playbackToken || this.playingSamplePath !== path) {
+          return;
+        }
+        this.finishSamplePreview("Click a sample to preview");
+      };
+      this.audioErrored = () => {
+        if (token !== this.playbackToken || this.playingSamplePath !== path) {
+          return;
+        }
+        this.finishSamplePreview(`Could not play ${path.split("/").pop()}`);
+      };
+      this.audio.addEventListener("ended", this.audioEnded, { once: true });
+      this.audio.addEventListener("error", this.audioErrored, { once: true });
+
+      void this.audio.play().then(
+        () => {
+          const activeRow = this.playingSampleRow;
+          if (
+            token !== this.playbackToken ||
+            this.audio.paused ||
+            this.playingSamplePath !== path ||
+            !activeRow
+          ) {
+            return;
+          }
+          activeRow.classList.add("sample-listening");
+          this.status.textContent = `▶ ${path.split("/").pop()}`;
+        },
+        () => {
+          if (token !== this.playbackToken) return;
+          this.finishSamplePreview(`Could not play ${path.split("/").pop()}`);
+        }
+      );
     });
 
     this.api.refreshBrowser();
   }
 
   private render(entries: BrowserEntry[]) {
-    this.tree.replaceChildren(...entries.map((entry) => this.renderEntry(entry, 0)));
-    this.status.textContent = "Click a sample to preview";
+    this.sampleRows.clear();
+    this.tree.replaceChildren(
+      ...entries.map((entry) => this.renderEntry(entry, 0))
+    );
+
+    if (this.requestedSamplePath) {
+      this.requestedSampleRow =
+        this.sampleRows.get(this.requestedSamplePath) ?? null;
+      if (!this.requestedSampleRow) this.requestedSamplePath = null;
+    }
+
+    if (this.playingSamplePath) {
+      this.playingSampleRow =
+        this.sampleRows.get(this.playingSamplePath) ?? null;
+      if (this.playingSampleRow && !this.audio.paused) {
+        this.playingSampleRow.classList.add("sample-listening");
+      }
+    }
+
+    if (this.requestedSamplePath) {
+      this.status.textContent = `Loading ${this.requestedSamplePath.split("/").pop()}…`;
+    } else if (this.playingSamplePath && !this.audio.paused) {
+      this.status.textContent = `▶ ${this.playingSamplePath.split("/").pop()}`;
+    } else {
+      this.status.textContent = "Click a sample to preview";
+    }
   }
 
   private renderEntry(entry: BrowserEntry, depth: number): HTMLElement {
@@ -144,7 +223,8 @@ export class SampleFileBrowser {
     if (entry.kind === "tidal") {
       name.addEventListener("click", () => this.api.openBrowserFile(entry.path));
     } else if (entry.kind === "sample") {
-      name.addEventListener("click", () => this.api.previewSample(entry.path));
+      this.sampleRows.set(entry.path, row);
+      name.addEventListener("click", () => this.previewSample(row, entry.path));
 
       const tidalName = row.appendChild(document.createElement("button"));
       tidalName.type = "button";
@@ -161,5 +241,89 @@ export class SampleFileBrowser {
     }
 
     return row;
+  }
+
+  private previewSample(row: HTMLElement, path: string) {
+    this.stopSamplePreview();
+    this.requestedSamplePath = path;
+    this.requestedSampleRow = row;
+    this.startleSample(row);
+    this.status.textContent = `Loading ${path.split("/").pop()}…`;
+    this.api.previewSample(path);
+  }
+
+  private startleSample(row: HTMLElement) {
+    this.stopSampleReaction();
+    if (this.reducedMotion.matches) return;
+
+    const duration = 760;
+    const direction = Math.random() < 0.5 ? -1 : 1;
+    const animation = row.animate(
+      dampedSpringKeyframes(
+        duration,
+        { stiffness: 360, damping: 8.2 },
+        ({ displacement, velocity, energy }) => {
+          const speed = Math.min(1.2, Math.abs(velocity));
+          const horizontal = displacement * direction * 10;
+          const rotation = displacement * direction * 3.4;
+          const scaleX = 1 - speed * 0.24 + Math.abs(displacement) * 0.065;
+          const scaleY = 1 + speed * 0.32 - Math.abs(displacement) * 0.04;
+          const shadow = energy * 3.5;
+          return {
+            transform: `translateX(${horizontal.toFixed(3)}px) rotate(${rotation.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`,
+            filter: `drop-shadow(${(-direction * shadow).toFixed(3)}px 0 0 rgb(0 128 0 / ${(energy * 0.72).toFixed(3)})) drop-shadow(${(direction * shadow).toFixed(3)}px 0 0 rgb(212 243 87 / ${(energy * 0.64).toFixed(3)}))`,
+          };
+        }
+      ),
+      { duration, easing: "linear" }
+    );
+    this.sampleReaction = animation;
+
+    const clear = () => {
+      if (this.sampleReaction === animation) this.sampleReaction = null;
+    };
+    animation.addEventListener("finish", clear, { once: true });
+    animation.addEventListener("cancel", clear, { once: true });
+  }
+
+  private stopSampleReaction() {
+    this.sampleReaction?.cancel();
+    this.sampleReaction = null;
+  }
+
+  private stopSamplePreview() {
+    this.stopSampleReaction();
+    this.playbackToken += 1;
+    this.playingSampleRow?.classList.remove("sample-listening");
+    this.requestedSamplePath = null;
+    this.requestedSampleRow = null;
+    this.playingSamplePath = null;
+    this.playingSampleRow = null;
+    this.releaseAudioSource();
+  }
+
+  private finishSamplePreview(status: string) {
+    this.playbackToken += 1;
+    this.playingSampleRow?.classList.remove("sample-listening");
+    this.playingSamplePath = null;
+    this.playingSampleRow = null;
+    this.releaseAudioSource();
+    this.status.textContent = status;
+  }
+
+  private releaseAudioSource() {
+    if (this.audioEnded) {
+      this.audio.removeEventListener("ended", this.audioEnded);
+      this.audioEnded = null;
+    }
+    if (this.audioErrored) {
+      this.audio.removeEventListener("error", this.audioErrored);
+      this.audioErrored = null;
+    }
+    this.audio.pause();
+    this.audio.removeAttribute("src");
+    this.audio.load();
+    if (this.audioURL) URL.revokeObjectURL(this.audioURL);
+    this.audioURL = null;
   }
 }

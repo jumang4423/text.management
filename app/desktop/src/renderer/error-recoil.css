@@ -1,0 +1,12 @@
+.cm-line.cm-error-recoil-active,
+.cm-content.cm-error-recoil-active {
+  transform-origin: left center;
+  will-change: transform, background-color, text-shadow;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-line.cm-error-recoil-active,
+  .cm-content.cm-error-recoil-active {
+    transform: none !important;
+  }
+}
