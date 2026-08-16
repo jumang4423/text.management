@@ -5,6 +5,7 @@ import { resolve } from "path";
 import fixPath from "fix-path";
 
 fixPath();
+app.setName("text.management");
 
 import { autoUpdater } from "electron-updater";
 
@@ -185,9 +186,6 @@ const createWindow = (configuration: Config) => {
       })
     );
 
-    // For now, load a blank document on startup
-    filesystem.loadDoc();
-
     // Show the window
     window.show();
   });
@@ -231,6 +229,10 @@ const createWindow = (configuration: Config) => {
 import { readFile } from "fs/promises";
 
 app.whenReady().then(async () => {
+  if (process.platform === "darwin") {
+    app.dock.setIcon(resolve(app.getAppPath(), "resources/icon.png"));
+  }
+
   const settings = new Config();
 
   // Try loading settings

@@ -27,7 +27,7 @@ export const managementTheme = EditorView.theme({
   },
 
   ".cm-scroller": {
-    margin: `var(--s-2)`,
+    margin: `var(--ui-space)`,
   },
 
   ".cm-scroller:not(:last-child)": {
@@ -36,7 +36,7 @@ export const managementTheme = EditorView.theme({
 
   ".cm-line": {
     width: "fit-content",
-    padding: `0 var(--s-0-5)`,
+    padding: `0 var(--ui-space)`,
     backgroundColor: col("ui-background"),
   },
 

@@ -34,7 +34,7 @@ class ElectronMenu extends EventEmitter<MenuEvents> {
     if (isMac) {
       this.menu.append(
         new MenuItem({
-          label: app.name,
+          label: "text.management",
           submenu: [
             {
               label: "About",

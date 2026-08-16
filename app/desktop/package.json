@@ -1,5 +1,6 @@
 {
   "name": "@management/text-management-desktop",
+  "productName": "text.management",
   "author": {
     "name": "Matthew Kaney",
     "email": "matthew.s.kaney@gmail.com"

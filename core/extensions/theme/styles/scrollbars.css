@@ -1,6 +1,6 @@
 ::-webkit-scrollbar {
-  width: var(--s-1-5);
-  height: var(--s-1-5);
+  width: var(--s-1);
+  height: var(--s-1);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -12,5 +12,5 @@
 }
 
 ::-webkit-scrollbar-corner {
-  background-color: "transparent";
+  background-color: transparent;
 }

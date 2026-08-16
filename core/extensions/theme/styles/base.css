@@ -1,6 +1,12 @@
 @import url(./scrollbars.css);
 
 @font-face {
+  font-family: "Monocraft";
+  src: local("Monocraft"), url("../Monocraft.ttf") format("truetype");
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Fira Code";
   src: local("Fira Code"), url("../FiraCode-VF.woff2") format("woff2");
 }
@@ -12,9 +18,10 @@
   --s-2: calc(var(--s-1) * 2);
   --s-2-5: calc(var(--s-1) * 2.5);
   --s-3: calc(var(--s-1) * 3);
+  --ui-space: 4px;
   --font-normal: 19.87px;
   --font-small: 13.25px;
-  font-family: Fira Code, monospace;
+  font-family: Monocraft, "Fira Code", monospace;
   color: var(--color-foreground);
   font-size: var(--font-normal);
   line-height: var(--s-2);
@@ -29,11 +36,14 @@ body {
 body {
   background-color: var(--color-background);
   margin: 0;
+  padding: var(--ui-space);
+  box-sizing: border-box;
 }
 
 #editor {
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .background {

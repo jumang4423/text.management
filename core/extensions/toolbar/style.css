@@ -1,26 +1,28 @@
 .cm-toolbar {
   color: var(--col-text);
-  font-family: Fira Code, monospace;
+  font-family: inherit;
   display: flex;
   justify-content: space-between;
-  padding: 0 var(--s-2);
-  border-top: solid 2px var(--color-ui-background-inactive);
-  line-height: var(--s-3);
-  margin-top: var(--s-2);
+  padding: var(--ui-space);
+  border: none;
+  line-height: var(--s-2-5);
+  margin: 0;
+  background: var(--color-ui-background-inactive);
 }
 
 .cm-toolbar-region {
   display: flex;
+  gap: var(--ui-space);
 }
 
 .cm-menu {
   position: relative;
-  margin-top: -2px;
-  padding-top: 2px;
+  margin: 0;
+  padding: 0;
 }
 
 .cm-menu:not(:last-child) {
-  margin-right: 2px;
+  margin-right: 0;
 }
 
 .cm-menu-item-list {
@@ -47,18 +49,23 @@
   outline: none;
   font: inherit;
   line-height: inherit;
-  margin-top: -2px;
-  padding: 2px var(--s-1) 0;
+  margin: 0;
+  padding: 0 var(--ui-space);
   background-color: var(--color-ui-background-inactive);
-  clip-path: inset(
-    var(--in-top, 0) var(--in-right, 0) var(--in-bottom, 0) var(--in-left, 0)
-  );
   white-space: nowrap;
   user-select: none;
 }
 
 .cm-menu-trigger {
-  --in-top: 2px;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.cm-menu-trigger:hover {
+  background-color: var(--color-ui-background);
+}
+
+.cm-menu-trigger:active {
+  transform: scale(0.97);
 }
 
 .cm-menu-trigger:focus-visible {
