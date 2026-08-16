@@ -586,18 +586,18 @@ const miniSyntaxColor: Record<MiniSyntaxKind, string> = {
   "square-close": "GREEN",
   "angle-open": "#D4F357",
   "angle-close": "#D4F357",
-  "paren-open": "#FFA020",
-  "paren-close": "#FFA020",
-  "curly-open": "#6ED4E3",
-  "curly-close": "#6ED4E3",
+  "paren-open": "#6ED4E3",
+  "paren-close": "#6ED4E3",
+  "curly-open": "#FFA020",
+  "curly-close": "#FFA020",
   rest: "#BEC5BD",
   group: "#94A1FF",
   slow: "#94A1FF",
   choice: "GREEN",
   replicate: "#D4F357",
-  "elongate-step": "#6ED4E3",
-  "elongate-count": "#6ED4E3",
-  degrade: "#FFA020",
+  "elongate-step": "#FFA020",
+  "elongate-count": "#FFA020",
+  degrade: "#6ED4E3",
   ratio: "#94A1FF",
 };
 
@@ -953,10 +953,10 @@ const heatmapDecorations = EditorView.decorations.compute(
 
 const cyclePalette = [
   "#008000", // downbeat: CSS GREEN
-  "#6ED4E3",
+  "#FFA020",
   "#94A1FF",
   "#D4F357",
-  "#FFA020",
+  "#6ED4E3",
 ];
 
 function cycleColor(phase: number, alpha: number) {

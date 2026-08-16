@@ -13,8 +13,8 @@
   "syntax.comment": "color-mix(in srgb, #BEC5BD 55%, BLACK)",
   "syntax.variable": "BLACK",
   "syntax.operator": "GREEN",
-  "syntax.string": "color-mix(in srgb, #6ED4E3 60%, BLACK)",
+  "syntax.string": "color-mix(in srgb, #FFA020 70%, BLACK)",
   "syntax.number": "color-mix(in srgb, #D4F357 55%, BLACK)",
   "syntax.bracket": "color-mix(in srgb, #94A1FF 68%, BLACK)",
-  "syntax.keyword": "color-mix(in srgb, #FFA020 70%, BLACK)"
+  "syntax.keyword": "color-mix(in srgb, #6ED4E3 60%, BLACK)"
 }

@@ -38,7 +38,8 @@ export function reactionIntensity(surprise: number) {
 export function textReactionMotion(
   highlight: TimestampedHighlightEvent,
   now: number,
-  characterIndex: number
+  characterIndex: number,
+  scaleRange = 1
 ) {
   const age = Math.max(0, now - highlight.time);
   if (age >= highlightReactionDurationMs) {
@@ -59,8 +60,14 @@ export function textReactionMotion(
     displacement >= 0 ? displacement * 9 : displacement * 3.8;
   const vertical = -verticalTravel + speed * 1.8;
   const rotation = displacement * direction * 4;
-  const scaleX = 1 + speed * 0.24 - displacement * 0.06;
-  const scaleY = 1 - speed * 0.32 + displacement * 0.11;
+  const scaleX = Math.max(
+    0.16,
+    1 + (speed * 0.24 - displacement * 0.06) * scaleRange
+  );
+  const scaleY = Math.max(
+    0.16,
+    1 + (-speed * 0.32 + displacement * 0.11) * scaleRange
+  );
   const shadow = spring.energy * intensity * 2.4;
 
   return {

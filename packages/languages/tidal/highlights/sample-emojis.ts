@@ -10,29 +10,27 @@ import {
   hoveredMininotationField,
   mininotationStringField,
 } from "./state";
-import { textReactionMotion, tidalReducedMotion } from "./reaction";
-
-const emojiForSample: Record<string, string> = {
-  toys: "🧸",
-  "808": "🥁",
-  bin: "🗑️",
-  perc: "🪘",
-  bd: "💥",
-  industrial: "🏭",
-  newnotes: "🎶",
-  tink: "✨",
-  hmm: "🤔",
-};
+import {
+  textReactionMotion,
+  tidalReducedMotion,
+} from "./reaction";
+import {
+  isUserSynthEmoji,
+  sampleEmojiDefinition,
+  sampleEmojiNames,
+} from "./sample-emoji-config";
 
 const sampleNameCharacter = /[A-Za-z0-9_-]/;
 const emojiSizeMultiplier = 1.3;
+const emojiScaleRange = 2.1;
 const samplePattern = new RegExp(
-  Object.keys(emojiForSample)
+  sampleEmojiNames
     .sort((left, right) => right.length - left.length)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|"),
-  "g"
+  "gi"
 );
-const cyclePalette = ["#008000", "#6ED4E3", "#94A1FF", "#D4F357", "#FFA020"];
+const cyclePalette = ["#008000", "#FFA020", "#94A1FF", "#D4F357", "#6ED4E3"];
 
 function selectionTouchesRange(state: EditorState, from: number, to: number) {
   return state.selection.ranges.some((selection) =>
@@ -81,7 +79,9 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
             continue;
           }
 
-          const emoji = emojiForSample[sample];
+          const definition = sampleEmojiDefinition(sample);
+          if (!definition) continue;
+          const emoji = definition.emoji;
           const suffix = text
             .slice(relativeFrom + sample.length)
             .match(/^:-?\d+/)?.[0] ?? "";
@@ -96,7 +96,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
           );
           const motion =
             highlight !== null && !tidalReducedMotion.matches
-              ? textReactionMotion(highlight, now, 0)
+              ? textReactionMotion(highlight, now, 0, emojiScaleRange)
               : { transform: "none", textShadow: "none" };
           const activeClass =
             motion.transform === "none" ? "" : " cm-sample-emoji-active";
@@ -111,14 +111,21 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
             relativeTo,
             now
           );
+          const userSynthClass = isUserSynthEmoji(definition)
+            ? " cm-user-synth-emoji"
+            : "";
+          const emojiSize =
+            sample.length * emojiSizeMultiplier * (definition.scale ?? 1);
           const decoration = Decoration.mark({
-            class: `cm-sample-emoji-token${activeClass}${playingClass}`,
+            class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}`,
             attributes: {
               "data-sample-emoji": emoji,
               "data-sample-suffix": suffix,
               "data-mini-id": mini.id.toString(),
-              title: sample,
-              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${(sample.length * emojiSizeMultiplier).toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%`,
+              title: isUserSynthEmoji(definition)
+                ? `${sample} (user synth)`
+                : sample,
+              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%; --sample-emoji-name-center: ${(nameWidth / 2).toFixed(3)}%`,
             },
           });
           decorations.push(

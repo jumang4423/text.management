@@ -128,6 +128,22 @@ body {
   pointer-events: none;
 }
 
+.cm-user-synth-emoji::before {
+  top: 50%;
+  bottom: auto;
+  left: var(--sample-emoji-name-center, 50%);
+  width: calc(var(--sample-emoji-size, 1em) * 1.15);
+  height: calc(var(--sample-emoji-size, 1em) * 1.15);
+  animation: none;
+  background: none;
+  color: initial !important;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  text-shadow: none !important;
+  transform: translate(-50%, -50%);
+  -webkit-text-fill-color: initial !important;
+  filter: none;
+}
+
 .cm-livecode-active-event {
   display: inline-block;
   transform-origin: 50% 90%;

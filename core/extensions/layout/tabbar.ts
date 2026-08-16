@@ -143,11 +143,18 @@ class TabButton {
     this.dom.classList.add("tab-container");
 
     this.tabButton = this.dom.appendChild(document.createElement("button"));
+    this.tabButton.type = "button";
     this.tabButton.draggable = true;
     this.tabButton.innerText = this.state.name;
     this.tabButton.classList.add("tab");
     this.tabButton.setAttribute("role", "tab");
     this.tabButton.setAttribute("aria-controls", this.state.id);
+
+    const select = () => {
+      if (this.parent.state.current !== this.state.id) {
+        this.parent.dispatch({ current: this.state.id });
+      }
+    };
 
     const activate = () => {
       this.parent.dispatch({
@@ -156,8 +163,13 @@ class TabButton {
       });
     };
 
-    // Activate on click so pressing the mouse does not steal the native drag
-    // gesture before the tab has a chance to start moving.
+    // Select immediately because Chromium can consume the first click while
+    // deciding whether a draggable button is starting a drag. The later click
+    // only transfers keyboard focus into the editor; drag-to-reorder remains
+    // available because pointer-down is not cancelled.
+    this.tabButton.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) select();
+    });
     this.tabButton.addEventListener("click", activate);
 
     this.dom.addEventListener("dragstart", (event) => {
@@ -205,15 +217,31 @@ class TabButton {
     });
 
     this.closeButton = this.dom.appendChild(document.createElement("button"));
+    this.closeButton.type = "button";
     this.closeButton.classList.add("close-button");
     this.closeButton.setAttribute("aria-label", "Close");
     this.closeButton.setAttribute("aria-controls", this.state.id);
     this.closeButton.append(
       ...icon(faXmark, { attributes: { "aria-hidden": "true" } }).node
     );
-    this.closeButton.addEventListener("click", (event) => {
+    const requestClose = () => {
       if (this.view.beforeClose()) {
         this.parent.dispatch({ changes: [this.state.id] });
+      }
+    };
+    this.closeButton.addEventListener("pointerdown", (event) => {
+      // Keep the close gesture out of the draggable tab underneath it.
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestClose();
+    });
+    this.closeButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.detail === 0) {
+        // Keyboard activation has no preceding pointer event.
+        requestClose();
       }
     });
   }

@@ -1,5 +1,6 @@
 import type { ElectronAPI } from "../preload";
 import type { BrowserEntry } from "../ipc";
+import { sampleEmojiForName } from "@management/lang-tidal/highlights/sample-emoji-config";
 
 import "./browser.css";
 
@@ -199,7 +200,8 @@ export class SampleFileBrowser {
       const details = document.createElement("details");
       details.open = entry.openByDefault ?? depth === 0;
       const summary = details.appendChild(document.createElement("summary"));
-      summary.textContent = entry.name;
+      const emoji = sampleEmojiForName(entry.name);
+      summary.textContent = emoji ? `${emoji} ${entry.name}` : entry.name;
       const children = details.appendChild(document.createElement("div"));
       children.className = "file-browser-children";
       children.append(
@@ -213,30 +215,33 @@ export class SampleFileBrowser {
     const row = document.createElement("div");
     row.className = `file-browser-row ${entry.kind}`;
 
-    const name = row.appendChild(document.createElement("button"));
-    name.type = "button";
-    name.className = "file-browser-name";
-    name.textContent = entry.name;
-    name.title = entry.path;
-
-    if (entry.kind === "tidal") {
-      name.addEventListener("click", () => this.api.openBrowserFile(entry.path));
-    } else if (entry.kind === "sample") {
+    if (entry.kind === "sample") {
       this.sampleRows.set(entry.path, row);
-      name.addEventListener("click", () => this.previewSample(row, entry.path));
-
       const tidalName = row.appendChild(document.createElement("button"));
       tidalName.type = "button";
       tidalName.className = "file-browser-tidal-name";
-      tidalName.textContent = entry.tidalName ?? "sample";
-      tidalName.title = "Copy Tidal sample expression";
+      const sampleName = entry.tidalName ?? "sample";
+      tidalName.textContent = sampleName;
+      tidalName.title = `Preview and copy ${sampleName}`;
       tidalName.addEventListener("click", () => {
-        const expression = `s "${entry.tidalName}"`;
-        this.api.copyText(expression);
-        this.status.textContent = `Copied ${expression}`;
+        this.previewSample(row, entry.path);
+        this.api.copyText(sampleName);
+        this.status.textContent = `Copied ${sampleName}`;
       });
     } else {
-      name.disabled = true;
+      const name = row.appendChild(document.createElement("button"));
+      name.type = "button";
+      name.className = "file-browser-name";
+      name.textContent = entry.name;
+      name.title = entry.path;
+
+      if (entry.kind === "tidal") {
+        name.addEventListener("click", () =>
+          this.api.openBrowserFile(entry.path)
+        );
+      } else {
+        name.disabled = true;
+      }
     }
 
     return row;

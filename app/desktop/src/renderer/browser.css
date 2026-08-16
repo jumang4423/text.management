@@ -146,9 +146,12 @@
 }
 
 .file-browser-tidal-name {
-  flex: none;
+  flex: 1;
+  min-width: 0;
   padding: 0 var(--ui-space);
   color: var(--color-syntax-string) !important;
+  text-align: left;
+  cursor: copy;
 }
 
 .file-browser footer {

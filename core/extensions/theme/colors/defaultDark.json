@@ -13,8 +13,8 @@
   "syntax.comment": "#BEC5BD",
   "syntax.variable": "#BEC5BD",
   "syntax.operator": "#94A1FF",
-  "syntax.string": "#6ED4E3",
+  "syntax.string": "#FFA020",
   "syntax.number": "#D4F357",
   "syntax.bracket": "GREEN",
-  "syntax.keyword": "#FFA020"
+  "syntax.keyword": "#6ED4E3"
 }
