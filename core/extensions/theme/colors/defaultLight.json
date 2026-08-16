@@ -5,7 +5,7 @@
   "focusBorder": "#f3a81d",
   "errorBackground": "#edbdb79a",
   "errorForeground": "#cf3625",
-  "selectionBackground": "#000000e0",
+  "selectionBackground": "linear-gradient(100deg, rgb(148 161 255 / 82%), rgb(110 212 227 / 82%), rgb(212 243 87 / 82%), rgb(255 160 32 / 82%), rgb(148 161 255 / 82%))",
   "livecode.activeEventBackground": "GREEN",
   "ui.background": "#ffffff72",
   "ui.backgroundInactive": "#ffffff40",
@@ -14,7 +14,7 @@
   "syntax.variable": "BLACK",
   "syntax.operator": "GREEN",
   "syntax.string": "color-mix(in srgb, #6ED4E3 60%, BLACK)",
-  "syntax.number": "color-mix(in srgb, #94A1FF 68%, BLACK)",
-  "syntax.bracket": "color-mix(in srgb, #D4F357 55%, BLACK)",
+  "syntax.number": "color-mix(in srgb, #D4F357 55%, BLACK)",
+  "syntax.bracket": "color-mix(in srgb, #94A1FF 68%, BLACK)",
   "syntax.keyword": "color-mix(in srgb, #FFA020 70%, BLACK)"
 }

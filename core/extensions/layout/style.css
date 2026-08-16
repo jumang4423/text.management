@@ -36,6 +36,30 @@
   height: var(--s-2-5);
 }
 
+.tab-container.dragging {
+  opacity: 0.35;
+}
+
+.tab-container.drop-before::before,
+.tab-container.drop-after::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: GREEN;
+  pointer-events: none;
+}
+
+.tab-container.drop-before::before {
+  left: -3px;
+}
+
+.tab-container.drop-after::after {
+  right: -3px;
+}
+
 .tab-container button {
   color: inherit;
   font-family: inherit;
@@ -64,6 +88,11 @@
   height: var(--s-2-5);
   padding: 0 28px 0 8px;
   background: var(--color-ui-background-inactive);
+  cursor: grab;
+}
+
+.tab-container.dragging .tab {
+  cursor: grabbing;
 }
 
 .tab-container.current .tab,

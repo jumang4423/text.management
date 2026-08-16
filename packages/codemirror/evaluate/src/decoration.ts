@@ -5,14 +5,19 @@ import { Evaluation, evaluationEffect } from "./evaluate";
 
 export const flashDuration = Facet.define({
   combine(values: readonly number[]) {
-    return values.reduce((a, b) => Math.max(a, b), 200);
+    return values.reduce((a, b) => Math.max(a, b), 360);
   },
 });
 
 const endEvalEffect = StateEffect.define<Evaluation>();
 
 const evaluationTheme = EditorView.baseTheme({
-  "& .cm-evaluated": { backgroundColor: "#FFFFFF" },
+  "& .cm-evaluated": {
+    display: "inline-block",
+    transformOrigin: "50% 72%",
+    willChange: "transform",
+    animation: "cm-evaluated-spring 360ms linear both",
+  },
 });
 
 export const evaluateDecorationPlugin = ViewPlugin.define(
@@ -46,6 +51,8 @@ export const evaluateDecorationPlugin = ViewPlugin.define(
               timers.add(timer);
 
               decorations = decorations.update({
+                filter: (_from, _to, value) =>
+                  value.spec.evaluation === undefined,
                 add: [
                   Decoration.mark({
                     class: "cm-evaluated",

@@ -1,6 +1,5 @@
 import type { ElectronAPI } from "../preload";
 import type { BrowserEntry } from "../ipc";
-import { dampedSpringKeyframes } from "@core/animation/spring";
 
 import "./browser.css";
 
@@ -17,9 +16,7 @@ export class SampleFileBrowser {
   private playingSamplePath: string | null = null;
   private playingSampleRow: HTMLElement | null = null;
   private sampleRows = new Map<string, HTMLElement>();
-  private sampleReaction: Animation | null = null;
   private playbackToken = 0;
-  private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   private expandedWidth = 240;
   private readonly minimumWidth = 180;
   private readonly widthStorageKey = "text-management:file-browser-width";
@@ -37,14 +34,15 @@ export class SampleFileBrowser {
     const header = this.dom.appendChild(document.createElement("header"));
     const title = header.appendChild(document.createElement("span"));
     title.textContent = "FILES";
-    header.title = "Double-click to minimize or restore";
-    header.addEventListener("dblclick", () => {
+    header.title = "Click to minimize or restore";
+    header.addEventListener("click", () => {
       const minimized = this.dom.classList.contains("minimized");
       if (minimized) {
         this.dom.classList.remove("minimized");
         this.dom.style.width = `${this.expandedWidth}px`;
       } else {
-        this.expandedWidth = this.dom.getBoundingClientRect().width;
+        this.expandedWidth = Math.round(this.dom.getBoundingClientRect().width);
+        this.persistExpandedWidth();
         this.dom.classList.add("minimized");
         this.dom.style.width = "";
       }
@@ -87,10 +85,7 @@ export class SampleFileBrowser {
         this.dom.classList.remove("resizing");
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        localStorage.setItem(
-          this.widthStorageKey,
-          this.expandedWidth.toString()
-        );
+        this.persistExpandedWidth();
       };
 
       resizeHandle.addEventListener("pointermove", move);
@@ -102,9 +97,6 @@ export class SampleFileBrowser {
     this.tree.className = "file-browser-tree";
     this.status = this.dom.appendChild(document.createElement("footer"));
     this.status.textContent = "Loading…";
-    this.reducedMotion.addEventListener("change", () => {
-      if (this.reducedMotion.matches) this.stopSampleReaction();
-    });
 
     this.api.onBrowserTree((entries) => this.render(entries));
     this.api.onBrowserError((message) => {
@@ -131,7 +123,7 @@ export class SampleFileBrowser {
         if (token !== this.playbackToken || this.playingSamplePath !== path) {
           return;
         }
-        this.finishSamplePreview("Click a sample to preview");
+        this.finishSamplePreview("");
       };
       this.audioErrored = () => {
         if (token !== this.playbackToken || this.playingSamplePath !== path) {
@@ -166,6 +158,13 @@ export class SampleFileBrowser {
     this.api.refreshBrowser();
   }
 
+  private persistExpandedWidth() {
+    localStorage.setItem(
+      this.widthStorageKey,
+      Math.round(this.expandedWidth).toString()
+    );
+  }
+
   private render(entries: BrowserEntry[]) {
     this.sampleRows.clear();
     this.tree.replaceChildren(
@@ -191,14 +190,14 @@ export class SampleFileBrowser {
     } else if (this.playingSamplePath && !this.audio.paused) {
       this.status.textContent = `▶ ${this.playingSamplePath.split("/").pop()}`;
     } else {
-      this.status.textContent = "Click a sample to preview";
+      this.status.textContent = "";
     }
   }
 
   private renderEntry(entry: BrowserEntry, depth: number): HTMLElement {
     if (entry.kind === "folder") {
       const details = document.createElement("details");
-      details.open = depth === 0;
+      details.open = entry.openByDefault ?? depth === 0;
       const summary = details.appendChild(document.createElement("summary"));
       summary.textContent = entry.name;
       const children = details.appendChild(document.createElement("div"));
@@ -247,52 +246,11 @@ export class SampleFileBrowser {
     this.stopSamplePreview();
     this.requestedSamplePath = path;
     this.requestedSampleRow = row;
-    this.startleSample(row);
     this.status.textContent = `Loading ${path.split("/").pop()}…`;
     this.api.previewSample(path);
   }
 
-  private startleSample(row: HTMLElement) {
-    this.stopSampleReaction();
-    if (this.reducedMotion.matches) return;
-
-    const duration = 760;
-    const direction = Math.random() < 0.5 ? -1 : 1;
-    const animation = row.animate(
-      dampedSpringKeyframes(
-        duration,
-        { stiffness: 360, damping: 8.2 },
-        ({ displacement, velocity, energy }) => {
-          const speed = Math.min(1.2, Math.abs(velocity));
-          const horizontal = displacement * direction * 10;
-          const rotation = displacement * direction * 3.4;
-          const scaleX = 1 - speed * 0.24 + Math.abs(displacement) * 0.065;
-          const scaleY = 1 + speed * 0.32 - Math.abs(displacement) * 0.04;
-          const shadow = energy * 3.5;
-          return {
-            transform: `translateX(${horizontal.toFixed(3)}px) rotate(${rotation.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`,
-            filter: `drop-shadow(${(-direction * shadow).toFixed(3)}px 0 0 rgb(0 128 0 / ${(energy * 0.72).toFixed(3)})) drop-shadow(${(direction * shadow).toFixed(3)}px 0 0 rgb(212 243 87 / ${(energy * 0.64).toFixed(3)}))`,
-          };
-        }
-      ),
-      { duration, easing: "linear" }
-    );
-    this.sampleReaction = animation;
-
-    const clear = () => {
-      if (this.sampleReaction === animation) this.sampleReaction = null;
-    };
-    animation.addEventListener("finish", clear, { once: true });
-    animation.addEventListener("cancel", clear, { once: true });
-  }
-
-  private stopSampleReaction() {
-    this.sampleReaction?.cancel();
-    this.sampleReaction = null;
-  }
-
   private stopSamplePreview() {
-    this.stopSampleReaction();
     this.playbackToken += 1;
     this.playingSampleRow?.classList.remove("sample-listening");
     this.requestedSamplePath = null;

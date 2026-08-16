@@ -47,7 +47,34 @@ export class TabBar {
       }
     });
 
-    this.newTabButton = new NewTabButton(this.parent) 
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (
+          !event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.shiftKey ||
+          !/^[1-4]$/.test(event.key)
+        ) {
+          return;
+        }
+
+        const index = Number(event.key) - 1;
+        const id = this.parent.state.order[index];
+        if (id === undefined) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        this.parent.dispatch({
+          current: id,
+          effects: [focusCurrent.of()],
+        });
+      },
+      true
+    );
+
+    this.newTabButton = new NewTabButton(this.parent);
     this.dom.appendChild(this.newTabButton.dom);
   }
 
@@ -60,15 +87,21 @@ export class TabBar {
           this.children.delete(change);
         }
       } else if (Array.isArray(change)) {
-        // TODO: Support tab movements
+        // The state already contains the final order. DOM order is synchronized
+        // below after all additions, removals, and movements are applied.
       } else {
         let { state } = change.view;
         let tab = new TabButton(this.parent, change.view);
         this.children.set(state.id, tab);
         // TODO: This assumes that all added tabs are added to the end
         // but before the new tab button
-        this.dom.insertBefore(tab.dom, this.newTabButton.dom)
+        this.dom.insertBefore(tab.dom, this.newTabButton.dom);
       }
+    }
+
+    for (const id of tr.state.order) {
+      const child = this.children.get(id);
+      if (child) this.dom.insertBefore(child.dom, this.newTabButton.dom);
     }
 
     // Update tab buttons
@@ -110,21 +143,66 @@ class TabButton {
     this.dom.classList.add("tab-container");
 
     this.tabButton = this.dom.appendChild(document.createElement("button"));
+    this.tabButton.draggable = true;
     this.tabButton.innerText = this.state.name;
     this.tabButton.classList.add("tab");
     this.tabButton.setAttribute("role", "tab");
     this.tabButton.setAttribute("aria-controls", this.state.id);
 
-    const tabActivation = (event: MouseEvent) => {
+    const activate = () => {
       this.parent.dispatch({
         current: this.state.id,
         effects: [focusCurrent.of()],
       });
-      event.preventDefault();
     };
 
-    this.tabButton.addEventListener("mousedown", tabActivation);
-    this.tabButton.addEventListener("click", tabActivation);
+    // Activate on click so pressing the mouse does not steal the native drag
+    // gesture before the tab has a chance to start moving.
+    this.tabButton.addEventListener("click", activate);
+
+    this.dom.addEventListener("dragstart", (event) => {
+      if (!event.dataTransfer) return;
+
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", this.state.id);
+      this.dom.classList.add("dragging");
+    });
+
+    this.dom.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer) return;
+
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      this.clearDropIndicators();
+      const bounds = this.dom.getBoundingClientRect();
+      const after = event.clientX >= bounds.left + bounds.width / 2;
+      this.dom.classList.add(after ? "drop-after" : "drop-before");
+    });
+
+    this.dom.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const sourceID = event.dataTransfer?.getData("text/plain");
+      this.clearDropIndicators();
+      if (!sourceID || sourceID === this.state.id) return;
+
+      const order = this.parent.state.order;
+      const sourceIndex = order.indexOf(sourceID);
+      const targetIndex = order.indexOf(this.state.id);
+      if (sourceIndex === -1 || targetIndex === -1) return;
+
+      const bounds = this.dom.getBoundingClientRect();
+      const boundary =
+        targetIndex + (event.clientX >= bounds.left + bounds.width / 2 ? 1 : 0);
+      const destination = boundary - (sourceIndex < boundary ? 1 : 0);
+      if (sourceIndex !== destination) {
+        this.parent.dispatch({ changes: [[sourceIndex, destination]] });
+      }
+    });
+
+    this.dom.addEventListener("dragend", () => {
+      this.dom.classList.remove("dragging");
+      this.clearDropIndicators();
+    });
 
     this.closeButton = this.dom.appendChild(document.createElement("button"));
     this.closeButton.classList.add("close-button");
@@ -147,8 +225,20 @@ class TabButton {
     this.dom.classList.toggle("current", selected);
     this.tabButton.setAttribute("aria-selected", selected.toString());
     this.tabButton.tabIndex = selected ? 0 : -1;
-    this.tabButton.innerText = this.state.name;
+    const index = tr.state.order.indexOf(this.state.id);
+    const number = index === -1 ? "" : `${index + 1} `;
+    this.tabButton.innerText = `${number}${this.state.name}`;
+    this.tabButton.setAttribute(
+      "aria-label",
+      index === -1 ? this.state.name : `Tab ${index + 1}: ${this.state.name}`
+    );
     this.closeButton.tabIndex = selected ? 0 : -1;
+  }
+
+  private clearDropIndicators() {
+    this.dom.parentElement
+      ?.querySelectorAll(".tab-container.drop-before, .tab-container.drop-after")
+      .forEach((tab) => tab.classList.remove("drop-before", "drop-after"));
   }
 
   focus() {

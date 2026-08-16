@@ -69,6 +69,18 @@ export const mininotationStringField = StateField.define<
   },
 });
 
+export const hoveredMininotationEffect = StateEffect.define<number | null>();
+
+export const hoveredMininotationField = StateField.define<number | null>({
+  create: () => null,
+  update: (value, tr) => {
+    for (const effect of tr.effects) {
+      if (effect.is(hoveredMininotationEffect)) value = effect.value;
+    }
+    return value;
+  },
+});
+
 export type TimestampedHighlightEvent = HighlightEvent & {
   time: number;
   surprise: number;
@@ -76,7 +88,7 @@ export type TimestampedHighlightEvent = HighlightEvent & {
 
 // The visual organism keeps settling after a short sound event has ended.
 // This is deliberately independent from HighlightEvent.duration.
-export const highlightReactionDurationMs = 780;
+export const highlightReactionDurationMs = 520;
 
 export const highlightTickEffect = StateEffect.define<number>();
 
@@ -100,7 +112,7 @@ export interface HeatmapHit {
 }
 
 export const heatmapHalfLifeMs = 1_000;
-export const heatmapDecayMs = 5_000;
+export const heatmapDecayMs = 3_000;
 const heatmapPhaseSteps = 12;
 const heatmapActivityHalfLifeCycles = 2;
 

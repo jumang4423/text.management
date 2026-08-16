@@ -37,7 +37,17 @@ export class LayoutState {
           }
         }
       } else if (Array.isArray(change)) {
-        // TODO: Movements
+        const [from, to] = change;
+        if (
+          Number.isInteger(from) &&
+          Number.isInteger(to) &&
+          from >= 0 &&
+          from < order.length
+        ) {
+          const [id] = order.splice(from, 1);
+          const destination = Math.max(0, Math.min(to, order.length));
+          order.splice(destination, 0, id);
+        }
       } else {
         let index = Math.min(change.index ?? order.length, order.length);
         let state = change.view.state;

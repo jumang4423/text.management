@@ -12,8 +12,7 @@ const coral = "#e06c75",
   stone = "#7d8799", // Brightened compared to original to increase contrast
   whiskey = "#d19a66",
   violet = "#c678dd",
-  highlightBackground = "#2c313a",
-  selection = "#3E4451";
+  highlightBackground = "#2c313a";
 
 export const managementTheme = EditorView.theme({
   "&": {
@@ -22,7 +21,7 @@ export const managementTheme = EditorView.theme({
     height: "100%",
     overflow: "auto",
     color: col("foreground"),
-    "& ::selection": { backgroundColor: selection },
+    "& ::selection": { backgroundColor: "transparent", color: "inherit" },
     caretColor: col("foreground"),
   },
 
@@ -81,11 +80,11 @@ export const managementTheme = EditorView.theme({
 
   "&.cm-focused ::selection": {
     background: "transparent",
+    color: "inherit",
   },
 
   ".cm-selectionBackground": {
     background: col("selection-background"),
-    color: col("foreground-invert"),
   },
 
   "& .cm-scroller": {

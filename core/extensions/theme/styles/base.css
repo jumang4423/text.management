@@ -57,12 +57,75 @@ body {
 }
 
 ::selection {
-  background: var(--color-selection-background);
-  color: var(--color-foreground-inverted);
+  background: #6ed4e3;
 }
 
 .cm-pattern-heatmap {
   background: var(--heatmap-background);
+}
+
+.cm-sample-emoji-token {
+  display: inline-block;
+  position: relative;
+  color: transparent !important;
+  transform-origin: 50% 90%;
+  background: var(--sample-emoji-heatmap, transparent);
+}
+
+.cm-sample-emoji-active {
+  will-change: transform;
+}
+
+.cm-sample-emoji-token * {
+  color: transparent !important;
+  text-shadow: none !important;
+  transform: none !important;
+}
+
+.cm-sample-emoji-token .cm-pattern-heatmap {
+  background: transparent !important;
+}
+
+.cm-sample-emoji-token .cm-livecode-active-event {
+  box-shadow: none !important;
+}
+
+.cm-sample-emoji-playing {
+  box-shadow: inset 0 -3px 0
+    var(--color-livecode-active-event-background);
+}
+
+.cm-sample-emoji-token::before {
+  content: attr(data-sample-emoji);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: var(--sample-emoji-name-width, 100%);
+  align-items: center;
+  justify-content: center;
+  color: initial;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", Monocraft, sans-serif;
+  font-size: var(--sample-emoji-size, 1em);
+  line-height: 1;
+  text-shadow: var(--sample-emoji-shadow, none);
+  pointer-events: none;
+}
+
+.cm-sample-emoji-token::after {
+  content: attr(data-sample-suffix);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--sample-emoji-name-width, 100%);
+  display: flex;
+  align-items: center;
+  color: var(--color-syntax-string);
+  font: inherit;
+  text-shadow: var(--sample-emoji-shadow, none);
+  pointer-events: none;
 }
 
 .cm-livecode-active-event {
@@ -77,9 +140,66 @@ body {
   will-change: transform;
 }
 
+.cm-livecode-mini-symbol {
+  display: inline-block;
+  transform-origin: 50% 65%;
+  will-change: transform;
+}
+
+.cm-livecode-mini-angle-open,
+.cm-livecode-mini-square-open,
+.cm-livecode-mini-paren-open,
+.cm-livecode-mini-curly-open {
+  transform-origin: 100% 55%;
+}
+
+.cm-livecode-mini-angle-close,
+.cm-livecode-mini-square-close,
+.cm-livecode-mini-paren-close,
+.cm-livecode-mini-curly-close {
+  transform-origin: 0 55%;
+}
+
+@keyframes cm-evaluated-spring {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+
+  7% {
+    transform: translateY(1px) scale(0.97, 0.9);
+  }
+
+  18% {
+    transform: translateY(-5px) scale(1.5);
+  }
+
+  35% {
+    transform: translateY(1px) scale(0.98, 0.95);
+  }
+
+  52% {
+    transform: translateY(-2px) scale(1.14);
+  }
+
+  70% {
+    transform: translateY(0) scale(0.992, 0.98);
+  }
+
+  84% {
+    transform: translateY(0) scale(1.018, 1.025);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cm-livecode-active-event,
-  .cm-livecode-bracket {
+  .cm-livecode-bracket,
+  .cm-livecode-mini-symbol,
+  .cm-evaluated {
+    animation: none !important;
     transform: none !important;
     text-shadow: none !important;
   }

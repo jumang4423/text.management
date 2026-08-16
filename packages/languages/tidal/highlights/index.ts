@@ -19,6 +19,8 @@ import {
   MininotationString,
   mininotationStringField,
   replaceMininotationEffect,
+  hoveredMininotationEffect,
+  hoveredMininotationField,
   TimestampedHighlightEvent,
   highlightTickEffect,
   highlightAddEffect,
@@ -31,8 +33,16 @@ import {
   heatmapSetField,
   heatmapSleepEffect,
 } from "./state";
+import { sampleEmojiDecorations } from "./sample-emojis";
+import {
+  reactionIntensity,
+  springDirection,
+  textReactionMotion,
+  tidalReducedMotion,
+} from "./reaction";
 
 export const tidalHushEventName = "text-management:tidal-hush";
+const highlightVisualLeadMs = 20;
 
 export function evaluationWithHighlights(
   action: (evaluation: { code: string }) => void
@@ -117,7 +127,7 @@ export function highlighter(api: typeof ElectronAPI): Extension {
     const lastHighlightSignatures = new Map<string, string>();
 
     let offTidalHighlight = api.onTidalHighlight((highlight) => {
-      const time = fromNTPTime(highlight.onset);
+      const time = fromNTPTime(highlight.onset) - highlightVisualLeadMs;
       const sourceKey = `${highlight.miniID}:${highlight.from}:${highlight.to}`;
       const signature = `${highlight.cycle}:${time.toFixed(3)}`;
       if (lastHighlightSignatures.get(sourceKey) === signature) return;
@@ -141,6 +151,49 @@ export function highlighter(api: typeof ElectronAPI): Extension {
       });
     };
     document.addEventListener(tidalHushEventName, hush);
+
+    let hoveredMiniID: number | null = null;
+    let hoveredEmojiHit: EmojiHit | null = null;
+    const setHoveredMini = (miniID: number | null) => {
+      if (hoveredMiniID === miniID) return;
+      hoveredMiniID = miniID;
+      view.dispatch({ effects: hoveredMininotationEffect.of(miniID) });
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (
+        hoveredEmojiHit !== null &&
+        pointInsideEmojiHit(event.clientX, event.clientY, hoveredEmojiHit)
+      ) {
+        setHoveredMini(hoveredEmojiHit.miniID);
+        return;
+      }
+      hoveredEmojiHit = emojiHitAtPoint(
+        view,
+        event.clientX,
+        event.clientY
+      );
+      if (hoveredEmojiHit !== null) {
+        setHoveredMini(hoveredEmojiHit.miniID);
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest(".cm-line")) {
+        setHoveredMini(null);
+        return;
+      }
+
+      const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      setHoveredMini(
+        position === null ? null : mininotationAtPosition(view.state, position)
+      );
+    };
+    const pointerLeave = () => {
+      hoveredEmojiHit = null;
+      setHoveredMini(null);
+    };
+    view.dom.addEventListener("pointermove", pointerMove);
+    view.dom.addEventListener("pointerleave", pointerLeave);
 
     const update = (time: number) => {
       const hasVisualWork =
@@ -196,6 +249,8 @@ export function highlighter(api: typeof ElectronAPI): Extension {
       destroy: () => {
         offTidalHighlight();
         document.removeEventListener(tidalHushEventName, hush);
+        view.dom.removeEventListener("pointermove", pointerMove);
+        view.dom.removeEventListener("pointerleave", pointerLeave);
         cancelAnimationFrame(animationFrame);
       },
     };
@@ -206,10 +261,71 @@ export function highlighter(api: typeof ElectronAPI): Extension {
     highlightSetField,
     heatmapSetField,
     heatmapNowField,
+    hoveredMininotationField,
     Prec.lowest(heatmapDecorations),
     Prec.high(bracketBodyDecorations),
     Prec.highest(highlightDecorations),
+    Prec.lowest(sampleEmojiDecorations),
   ];
+}
+
+interface EmojiHit {
+  miniID: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function emojiHitAtPoint(
+  view: EditorView,
+  x: number,
+  y: number
+): EmojiHit | null {
+  const tokens = view.dom.querySelectorAll<HTMLElement>(
+    ".cm-sample-emoji-token"
+  );
+
+  for (const token of tokens) {
+    const miniID = Number(token.dataset.miniId);
+    if (!Number.isFinite(miniID)) continue;
+
+    const tokenRect = token.getBoundingClientRect();
+    const emojiStyle = getComputedStyle(token, "::before");
+    const emojiSize = Number.parseFloat(emojiStyle.fontSize);
+    const nameWidth = Number.parseFloat(emojiStyle.width);
+    if (!Number.isFinite(emojiSize) || !Number.isFinite(nameWidth)) continue;
+
+    const centerX = tokenRect.left + nameWidth / 2;
+    const centerY = tokenRect.top + tokenRect.height / 2;
+    const padding = emojiSize * 0.08;
+    const hit: EmojiHit = {
+      miniID,
+      left: centerX - emojiSize / 2 - padding,
+      right: centerX + emojiSize / 2 + padding,
+      top: centerY - emojiSize / 2 - padding,
+      bottom: centerY + emojiSize / 2 + padding,
+    };
+    if (pointInsideEmojiHit(x, y, hit)) return hit;
+  }
+
+  return null;
+}
+
+function pointInsideEmojiHit(x: number, y: number, hit: EmojiHit) {
+  return x >= hit.left && x <= hit.right && y >= hit.top && y <= hit.bottom;
+}
+
+function mininotationAtPosition(state: EditorState, position: number) {
+  let miniID: number | null = null;
+  state.field(mininotationStringField).between(
+    Math.max(0, position - 1),
+    Math.min(state.doc.length, position + 1),
+    (from, to, mini) => {
+      if (from <= position && position < to) miniID = mini.id;
+    }
+  );
+  return miniID;
 }
 
 interface Habit {
@@ -270,38 +386,8 @@ function updateHabit(
 }
 
 const activeHighlightStyle =
-  "box-shadow: inset 0 -0.14em 0 var(--color-livecode-active-event-background); color: var(--color-foreground)";
+  "box-shadow: inset 0 -0.14em 0 var(--color-livecode-active-event-background)";
 const startleDurationMs = highlightReactionDurationMs;
-const textSpring = { stiffness: 420, damping: 8.4 };
-const characterStaggerMs = 7;
-const tidalReducedMotion = window.matchMedia(
-  "(prefers-reduced-motion: reduce)"
-);
-
-function springDirection({
-  miniID,
-  from,
-  to,
-  cycle,
-}: Pick<TimestampedHighlightEvent, "miniID" | "from" | "to" | "cycle">
-) {
-  // Seed the side from the musical event: it changes between hits, but never
-  // flickers while the same spring is being redrawn every animation frame.
-  let hash = Math.imul(miniID + 1, 73_856_093);
-  hash ^= Math.imul(from + 1, 19_349_663);
-  hash ^= Math.imul(to + 1, 83_492_791);
-  hash ^= Math.imul(Math.round(cycle * 1_024) + 1, 1_597_334_677);
-  hash ^= hash >>> 16;
-  hash = Math.imul(hash, 2_246_822_519);
-  hash ^= hash >>> 13;
-  hash = Math.imul(hash, 3_266_489_917);
-  hash ^= hash >>> 16;
-  return hash & 1 ? 1 : -1;
-}
-
-function reactionIntensity(surprise: number) {
-  return Math.pow(Math.min(1, Math.max(0, surprise)), 1.1);
-}
 
 const highlightDecoration = Decoration.mark({
   attributes: {
@@ -317,37 +403,31 @@ function decorationForHighlight(
   const age = Math.max(0, now - highlight.time);
   if (age >= startleDurationMs) return highlightDecoration;
 
-  const springAge = age - Math.min(12, characterIndex) * characterStaggerMs;
-  const spring =
-    springAge < 0
-      ? restingSpring
-      : dampedSpringImpulse(springAge, textSpring);
-  const intensity = reactionIntensity(highlight.surprise);
-  const direction = springDirection(highlight);
-  const displacement = spring.displacement * intensity;
-  const speed = Math.min(1.2, Math.abs(spring.velocity)) * intensity;
-  const horizontal = displacement * direction * 4.2;
-  const verticalTravel =
-    displacement >= 0 ? displacement * 9 : displacement * 3.8;
-  const vertical = -verticalTravel + speed * 1.8;
-  const rotation = displacement * direction * 4;
-  const scaleX = 1 + speed * 0.24 - displacement * 0.06;
-  const scaleY = 1 - speed * 0.32 + displacement * 0.11;
-  const shadow = spring.energy * intensity * 2.4;
+  const { transform, textShadow } = textReactionMotion(
+    highlight,
+    now,
+    characterIndex
+  );
   const eventStyle =
     age <= highlight.duration
       ? activeHighlightStyle
-      : "color: var(--color-foreground)";
+      : "";
   return Decoration.mark({
     attributes: {
       class: "cm-livecode-active-event",
-      style: `${eventStyle}; transform: translate(${horizontal.toFixed(3)}px, ${vertical.toFixed(3)}px) rotate(${rotation.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)}); text-shadow: ${(-direction * shadow).toFixed(3)}px 0 GREEN, ${(direction * shadow).toFixed(3)}px 0 #D4F357`,
+      style: `${eventStyle}; transform: ${transform}; text-shadow: ${textShadow}`,
     },
   });
 }
 
 const highlightDecorations = EditorView.decorations.compute(
-  [mininotationStringField, highlightSetField, heatmapNowField],
+  [
+    mininotationStringField,
+    highlightSetField,
+    heatmapNowField,
+    hoveredMininotationField,
+    "selection",
+  ],
   (state) => {
     const characterMarks = new Map<
       string,
@@ -384,7 +464,13 @@ const highlightDecorations = EditorView.decorations.compute(
     let mininotationCursor = mininotationRanges.iter();
 
     while (mininotationCursor.value !== null) {
-      let { from, value: miniString } = mininotationCursor;
+      let { from, to, value: miniString } = mininotationCursor;
+      const animationPaused = mininotationAnimationPaused(
+        state,
+        from,
+        to,
+        miniString.id
+      );
 
       const highlightsInMini = currentHighlights
         .filter(({ miniID }) => miniID === miniString.id)
@@ -405,8 +491,10 @@ const highlightDecorations = EditorView.decorations.compute(
           const isActive = age <= highlight.duration;
           const canMove =
             !tidalReducedMotion.matches &&
+            !animationPaused &&
             age < startleDurationMs &&
-            !/\s/.test(character);
+            !/\s/.test(character) &&
+            !/[~.\[\],*\/|!_@?:%<>(){}]/.test(character);
 
           if (canMove) {
             addCharacterMark(
@@ -442,28 +530,90 @@ const highlightDecorations = EditorView.decorations.compute(
 interface BracketPair {
   open: number;
   close: number;
-  kind: "square" | "angle";
+  kind: "square" | "angle" | "paren" | "curly";
 }
 
-interface BracketBodyMark {
+type MiniSyntaxKind =
+  | `${BracketPair["kind"]}-open`
+  | `${BracketPair["kind"]}-close`
+  | "rest"
+  | "group"
+  | "slow"
+  | "choice"
+  | "replicate"
+  | "elongate-step"
+  | "elongate-count"
+  | "degrade"
+  | "ratio";
+
+interface MiniSyntaxMark {
   from: number;
-  kind: BracketPair["kind"];
-  side: "open" | "close";
+  kind: MiniSyntaxKind;
   age: number;
   surprise: number;
+  direction: number;
+  delay: number;
 }
 
-const bracketBodyDurationMs = highlightReactionDurationMs;
-const bracketPropagationDelayMs = 24;
-const bracketSpring = { stiffness: 320, damping: 7.4 };
+const miniSyntaxDurationMs = 320;
+const bracketPropagationDelayMs = 7;
+const miniSyntaxAmplitude = 0.3;
+
+const miniSyntaxSprings: Record<
+  "tight" | "wide" | "heavy" | "wild",
+  { stiffness: number; damping: number }
+> = {
+  tight: { stiffness: 1600, damping: 26 },
+  wide: { stiffness: 1100, damping: 22 },
+  heavy: { stiffness: 850, damping: 25 },
+  wild: { stiffness: 2000, damping: 28 },
+};
+
+const miniSymbolKinds: Record<string, MiniSyntaxKind> = {
+  "~": "rest",
+  ".": "group",
+  "/": "slow",
+  "|": "choice",
+  "!": "replicate",
+  _: "elongate-step",
+  "@": "elongate-count",
+  "?": "degrade",
+  "%": "ratio",
+};
+
+const miniSyntaxColor: Record<MiniSyntaxKind, string> = {
+  "square-open": "GREEN",
+  "square-close": "GREEN",
+  "angle-open": "#D4F357",
+  "angle-close": "#D4F357",
+  "paren-open": "#FFA020",
+  "paren-close": "#FFA020",
+  "curly-open": "#6ED4E3",
+  "curly-close": "#6ED4E3",
+  rest: "#BEC5BD",
+  group: "#94A1FF",
+  slow: "#94A1FF",
+  choice: "GREEN",
+  replicate: "#D4F357",
+  "elongate-step": "#6ED4E3",
+  "elongate-count": "#6ED4E3",
+  degrade: "#FFA020",
+  ratio: "#94A1FF",
+};
 
 const bracketBodyDecorations = EditorView.decorations.compute(
-  [mininotationStringField, highlightSetField, heatmapNowField],
+  [
+    mininotationStringField,
+    highlightSetField,
+    heatmapNowField,
+    hoveredMininotationField,
+    "selection",
+  ],
   (state) => {
     const decorations: Range<Decoration>[] = [];
     if (tidalReducedMotion.matches) return Decoration.set(decorations, true);
 
-    const marks = new Map<string, BracketBodyMark>();
+    const marks = new Map<string, MiniSyntaxMark>();
     const mininotationRanges = state.field(mininotationStringField);
     const currentHighlights = state.field(highlightSetField);
     const now = state.field(heatmapNowField);
@@ -475,33 +625,43 @@ const bracketBodyDecorations = EditorView.decorations.compute(
         to,
         value: miniString,
       } = mininotationCursor;
-      const pairs = findBracketPairs(state.doc.sliceString(from, to));
+      if (mininotationAnimationPaused(state, from, to, miniString.id)) {
+        mininotationCursor.next();
+        continue;
+      }
+      const miniText = state.doc.sliceString(from, to);
+      const pairs = findBracketPairs(miniText);
+      const symbols = findMiniSymbols(miniText);
 
       for (const highlight of currentHighlights.filter(
         ({ miniID }) => miniID === miniString.id
       )) {
         const age = Math.max(0, now - highlight.time);
-        if (age >= bracketBodyDurationMs) continue;
+        if (age >= miniSyntaxDurationMs) continue;
 
-        const enclosing = pairs
+        const relevantPairs = pairs
           .filter(
             (pair) =>
-              pair.open < highlight.from && pair.close >= highlight.to
+              (pair.open < highlight.from && pair.close >= highlight.to) ||
+              (pair.kind === "paren" &&
+                pair.open >= highlight.to &&
+                pair.open - highlight.to <= 1)
           )
           .sort(
             (left, right) =>
               left.close - left.open - (right.close - right.open)
           )
-          .slice(0, 2);
+          .slice(0, 4);
 
-        enclosing.forEach((pair, depth) => {
-          const surprise = highlight.surprise / (depth + 1);
+        relevantPairs.forEach((pair, depth) => {
+          const surprise = Math.max(0.45, highlight.surprise / (depth + 1));
           for (const [side, position] of [
             ["open", pair.open],
             ["close", pair.close],
           ] as const) {
             const absolute = from + position;
-            const key = `${absolute}:${pair.kind}:${side}`;
+            const kind = `${pair.kind}-${side}` as MiniSyntaxKind;
+            const key = `${absolute}:${kind}`;
             const previous = marks.get(key);
             if (
               !previous ||
@@ -510,38 +670,67 @@ const bracketBodyDecorations = EditorView.decorations.compute(
             ) {
               marks.set(key, {
                 from: absolute,
-                kind: pair.kind,
-                side,
+                kind,
                 age,
                 surprise,
+                direction: side === "open" ? -1 : 1,
+                delay: bracketPropagationDelayMs + depth * 5,
               });
             }
           }
         });
+
+        const eventCenter = (highlight.from + highlight.to) / 2;
+        for (const symbol of symbols) {
+          const absolute = from + symbol.position;
+          const key = `${absolute}:${symbol.kind}`;
+          const previous = marks.get(key);
+          const distance = Math.abs(symbol.position - eventCenter);
+          const delay = Math.min(24, distance * 1.5);
+          const surprise = Math.max(0.55, highlight.surprise);
+
+          if (
+            !previous ||
+            previous.surprise < surprise ||
+            (previous.surprise === surprise && previous.age > age)
+          ) {
+            marks.set(key, {
+              from: absolute,
+              kind: symbol.kind,
+              age,
+              surprise,
+              direction: springDirection(highlight),
+              delay,
+            });
+          }
+        }
       }
 
       mininotationCursor.next();
     }
 
     for (const mark of marks.values()) {
-      const direction = mark.side === "open" ? -1 : 1;
-      const springAge = mark.age - bracketPropagationDelayMs;
+      const springAge = mark.age - mark.delay;
+      const springOptions = springOptionsForMiniSyntax(mark.kind);
       const spring =
         springAge < 0
           ? restingSpring
-          : dampedSpringImpulse(springAge, bracketSpring);
-      const intensity = reactionIntensity(mark.surprise);
-      const displacement = spring.displacement * intensity * direction;
-      const speed = Math.min(1.2, Math.abs(spring.velocity)) * intensity;
-      const horizontal = displacement * 7;
-      const rotation = displacement * 3.3;
-      const scaleX = 1 - speed * 0.14;
-      const scaleY = 1 + speed * 0.36;
-      const shadow = spring.energy * intensity * 2;
+          : dampedSpringImpulse(springAge, springOptions);
+      const intensity = 0.65 + reactionIntensity(mark.surprise) * 0.85;
+      const displacement = spring.displacement * intensity;
+      const speed = Math.min(1.35, Math.abs(spring.velocity)) * intensity;
+      const { transform, shadow } = miniSyntaxMotion(
+        mark.kind,
+        displacement * miniSyntaxAmplitude,
+        speed * miniSyntaxAmplitude,
+        spring.energy * intensity * miniSyntaxAmplitude,
+        mark.direction
+      );
+      const color = miniSyntaxColor[mark.kind];
       const decoration = Decoration.mark({
         attributes: {
-          class: `cm-livecode-bracket cm-livecode-bracket-${mark.kind}`,
-          style: `transform: translateX(${horizontal.toFixed(3)}px) rotate(${rotation.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)}); text-shadow: ${(-direction * shadow).toFixed(3)}px 0 GREEN, ${(direction * shadow).toFixed(3)}px 0 #D4F357`,
+          class: `cm-livecode-mini-symbol cm-livecode-mini-${mark.kind}`,
+          style: `transform: ${transform}; text-shadow: ${(-mark.direction * shadow).toFixed(3)}px 0 ${color}, ${(mark.direction * shadow * 0.55).toFixed(3)}px 0 GREEN`,
         },
       });
       decorations.push(decoration.range(mark.from, mark.from + 1));
@@ -551,19 +740,149 @@ const bracketBodyDecorations = EditorView.decorations.compute(
   }
 );
 
+function cursorInsideRange(state: EditorState, from: number, to: number) {
+  return state.selection.ranges.some(
+    ({ head }) => head >= from && head < to
+  );
+}
+
+function mininotationAnimationPaused(
+  state: EditorState,
+  from: number,
+  to: number,
+  miniID: number
+) {
+  return (
+    cursorInsideRange(state, from, to) ||
+    state.field(hoveredMininotationField) === miniID
+  );
+}
+
+function springOptionsForMiniSyntax(kind: MiniSyntaxKind) {
+  if (kind === "degrade" || kind === "choice") {
+    return miniSyntaxSprings.wild;
+  }
+  if (
+    kind === "slow" ||
+    kind === "elongate-step" ||
+    kind === "elongate-count" ||
+    kind.startsWith("angle-")
+  ) {
+    return miniSyntaxSprings.wide;
+  }
+  if (kind === "rest" || kind.startsWith("curly-")) {
+    return miniSyntaxSprings.heavy;
+  }
+  return miniSyntaxSprings.tight;
+}
+
+function miniSyntaxMotion(
+  kind: MiniSyntaxKind,
+  displacement: number,
+  speed: number,
+  energy: number,
+  direction: number
+) {
+  const signed = displacement * direction;
+  const absolute = Math.abs(displacement);
+  const format = (value: number) => value.toFixed(3);
+  const scale = (value: number) => Math.max(0.18, value).toFixed(4);
+  let transform = "none";
+
+  switch (kind) {
+    case "rest":
+      transform = `translateY(${format(absolute * 12 + speed * 2)}px) rotate(${format(signed * 8)}deg) scale(${scale(1 + speed * 0.5)}, ${scale(1 - speed * 0.48)})`;
+      break;
+    case "group":
+      transform = `translateY(${format(-absolute * 15)}px) rotate(${format(signed * 95)}deg) scale(${scale(1 + speed * 0.85)})`;
+      break;
+    case "slow":
+      transform = `translateX(${format(signed * 13)}px) rotate(${format(-signed * 22)}deg) scale(${scale(1 + absolute * 1.25)}, ${scale(1 - speed * 0.24)})`;
+      break;
+    case "choice":
+      transform = `translateX(${format(signed * 14)}px) rotate(${format(signed * 125)}deg) scale(${scale(1 + speed * 0.9)}, ${scale(1 - speed * 0.32)})`;
+      break;
+    case "replicate":
+      transform = `translate(${format(signed * 11)}px, ${format(-absolute * 7)}px) rotate(${format(signed * 35)}deg) scale(${scale(1 + speed * 1.1)})`;
+      break;
+    case "elongate-step":
+      transform = `translateX(${format(signed * 11)}px) scale(${scale(1 + absolute * 2.2)}, ${scale(1 - speed * 0.28)})`;
+      break;
+    case "elongate-count":
+      transform = `translateX(${format(signed * 12)}px) rotate(${format(signed * 75)}deg) scale(${scale(1 + absolute * 1.55)}, ${scale(1 + speed * 0.45)})`;
+      break;
+    case "degrade":
+      transform = `translate(${format(signed * 8)}px, ${format(-absolute * 13)}px) rotate(${format(signed * 330)}deg) scale(${scale(1 + speed * 0.9)}, ${scale(1 - speed * 0.35)})`;
+      break;
+    case "ratio":
+      transform = `translateY(${format(-absolute * 8)}px) rotate(${format(signed * 120)}deg) scale(${scale(1 - speed * 0.35)}, ${scale(1 + speed * 1.2)})`;
+      break;
+    case "angle-open":
+    case "angle-close":
+      transform = `translateX(${format(signed * 12)}px) translateY(${format(-absolute * 4)}px) rotate(${format(signed * 10)}deg) scale(${scale(1 + speed * 0.4)}, ${scale(1 + speed * 0.62)})`;
+      break;
+    case "paren-open":
+    case "paren-close":
+      transform = `translate(${format(signed * 7)}px, ${format(-absolute * 6)}px) rotate(${format(signed * 70)}deg) scale(${scale(1 + speed * 0.3)}, ${scale(1 + speed * 0.55)})`;
+      break;
+    case "curly-open":
+    case "curly-close":
+      transform = `translate(${format(signed * 9)}px, ${format(displacement * 6)}px) rotate(${format(signed * 40)}deg) scale(${scale(1 + speed * 0.45)}, ${scale(1 - speed * 0.18)})`;
+      break;
+    case "square-open":
+    case "square-close":
+      transform = `translateX(${format(signed * 7)}px) rotate(${format(signed * 16)}deg) scale(${scale(1 - speed * 0.1)}, ${scale(1 + speed * 0.38)})`;
+      break;
+  }
+
+  return { transform, shadow: energy * (kind === "replicate" ? 8 : 4.2) };
+}
+
+function findMiniSymbols(text: string) {
+  const symbols: { position: number; kind: MiniSyntaxKind }[] = [];
+
+  for (let position = 1; position < text.length - 1; position += 1) {
+    const char = text[position];
+    const kind = miniSymbolKinds[char];
+    if (!kind || text[position - 1] === "\\") continue;
+
+    // A decimal point is a value, while a standalone dot is group shorthand.
+    if (
+      char === "." &&
+      (/\d/.test(text[position - 1] ?? "") ||
+        /\d/.test(text[position + 1] ?? ""))
+    ) {
+      continue;
+    }
+
+    symbols.push({ position, kind });
+  }
+
+  return symbols;
+}
+
 function findBracketPairs(text: string): BracketPair[] {
-  const stack: { position: number; char: "[" | "<" }[] = [];
+  const openers = {
+    "[": { close: "]", kind: "square" },
+    "<": { close: ">", kind: "angle" },
+    "(": { close: ")", kind: "paren" },
+    "{": { close: "}", kind: "curly" },
+  } as const;
+  type Opener = keyof typeof openers;
+  const stack: { position: number; char: Opener }[] = [];
   const pairs: BracketPair[] = [];
 
   for (let position = 0; position < text.length; position += 1) {
     const char = text[position];
-    if (char === "[" || char === "<") {
-      stack.push({ position, char });
+    if (char in openers) {
+      stack.push({ position, char: char as Opener });
       continue;
     }
 
-    if (char !== "]" && char !== ">") continue;
-    const opener = char === "]" ? "[" : "<";
+    const opener = (Object.entries(openers) as [Opener, (typeof openers)[Opener]][]).find(
+      ([, value]) => value.close === char
+    )?.[0];
+    if (!opener) continue;
     let openIndex = -1;
     for (let index = stack.length - 1; index >= 0; index -= 1) {
       if (stack[index].char === opener) {
@@ -576,7 +895,7 @@ function findBracketPairs(text: string): BracketPair[] {
     pairs.push({
       open: open.position,
       close: position,
-      kind: opener === "[" ? "square" : "angle",
+      kind: openers[opener].kind,
     });
   }
 

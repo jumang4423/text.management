@@ -27,8 +27,15 @@ const filesystem = new Filesystem();
 const settingsPath = resolve(app.getPath("userData"), "settings.json");
 const tidalWorkspace = "/Users/jumang4423/sc-dotfiles";
 const browserRoots = [
-  resolve(tidalWorkspace, "sets"),
-  resolve(tidalWorkspace, "samples"),
+  { path: resolve(tidalWorkspace, "sets"), openByDefault: true },
+  { path: resolve(tidalWorkspace, "samples"), openByDefault: true },
+  {
+    path: resolve(
+      app.getPath("home"),
+      "Library/Application Support/SuperCollider/downloaded-quarks/Dirt-Samples"
+    ),
+    openByDefault: false,
+  },
 ];
 const audioExtensions = new Set([
   ".aif",
@@ -127,7 +134,14 @@ const createWindow = (configuration: Config) => {
 
     const sendBrowserTree = async () => {
       try {
-        send("browserTree", await Promise.all(browserRoots.map(readBrowserRoot)));
+        send(
+          "browserTree",
+          await Promise.all(
+            browserRoots.map(({ path, openByDefault }) =>
+              readBrowserRoot(path, openByDefault)
+            )
+          )
+        );
       } catch (error) {
         send("browserError", `Could not read browser files: ${error}`);
       }
@@ -285,15 +299,20 @@ import { readFile, readdir } from "fs/promises";
 function isInsideBrowserRoots(path: string) {
   const resolvedPath = resolve(path);
   return browserRoots.some(
-    (root) => resolvedPath === root || resolvedPath.startsWith(`${root}/`)
+    ({ path: root }) =>
+      resolvedPath === root || resolvedPath.startsWith(`${root}/`)
   );
 }
 
-async function readBrowserRoot(path: string): Promise<BrowserEntry> {
+async function readBrowserRoot(
+  path: string,
+  openByDefault: boolean
+): Promise<BrowserEntry> {
   return {
     kind: "folder",
     name: basename(path),
     path,
+    openByDefault,
     children: await readBrowserDirectory(path),
   };
 }

@@ -10,6 +10,7 @@ export interface BrowserEntry {
   name: string;
   path: string;
   tidalName?: string;
+  openByDefault?: boolean;
   children?: BrowserEntry[];
 }
 
