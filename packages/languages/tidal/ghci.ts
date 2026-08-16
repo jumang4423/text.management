@@ -1,7 +1,5 @@
-import { promisify } from "util";
 import { Socket, createSocket } from "dgram";
-import { exec, spawn, ChildProcessWithoutNullStreams } from "child_process";
-import { join } from "path";
+import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import { readFile } from "fs/promises";
 
 import { parse } from "@core/osc/osc";
@@ -15,6 +13,8 @@ import { TidalSettingsSchema } from "./settings";
 import { generateIntegrationCode } from "./editor-integration";
 import { NTPTime } from "@core/osc/types";
 import { EventEmitter } from "@core/events";
+
+const USER_BOOT_FILE = "/Users/jumang4423/sc-dotfiles/BootTidal.hs";
 
 export interface HighlightEvent {
   miniID: number;
@@ -104,8 +104,6 @@ export class GHCI extends Engine<GHCIEvents> {
 
   private async initProcess() {
     const {
-      "tidal.boot.disableEditorIntegration": disableEditorIntegration,
-      "tidal.boot.useDefaultFile": useDefaultBootfile,
       "tidal.boot.customFiles": bootFiles,
       "tidal.runFromSource": sourceLocation,
     } = this.settings.data;
@@ -159,20 +157,17 @@ export class GHCI extends Engine<GHCIEvents> {
       }
     }
 
-    if (!disableEditorIntegration) {
-      const integrationCode = generateIntegrationCode(this.version);
-      await this.send(integrationCode);
-    }
+    const integrationCode = generateIntegrationCode(this.version);
+    await this.send(integrationCode);
 
-    if (useDefaultBootfile) {
-      if (sourceLocation) {
-        await this.sendFile(join(sourceLocation, "BootTidal.hs"));
-      } else {
-        await this.sendFile(await this.defaultBootfile());
-      }
-    }
+    // This fork shares the exact same boot configuration as the user's VS Code
+    // Tidal environment. Editor integration is loaded first so BootTidal.hs's
+    // startTidal call creates one Stream with both SuperDirt and highlighting.
+    await this.sendFile(USER_BOOT_FILE);
 
     for (let path of bootFiles ?? []) {
+      if (path === USER_BOOT_FILE) continue;
+
       try {
         await this.sendFile(path);
       } catch (err) {
@@ -188,9 +183,7 @@ export class GHCI extends Engine<GHCIEvents> {
     }
 
     // Send watch clock instruction
-    if (!disableEditorIntegration) {
-      await this.send("_ <- watchClock tidal");
-    }
+    await this.send("_ <- watchClock tidal");
 
     // child.on("close", (code) => {
     //   console.log(`child process exited with code ${code}`);
@@ -200,13 +193,6 @@ export class GHCI extends Engine<GHCIEvents> {
   }
 
   private outputFilters: RegExp[] = [];
-
-  private async defaultBootfile() {
-    const { stdout } = await promisify(exec)(
-      'ghc -e "import Paths_tidal" -e "getDataDir>>=putStr"'
-    );
-    return join(stdout, "BootTidal.hs");
-  }
 
   private async reloadSettings() {
     // TODO: Some sort of check that settings have actually changed?

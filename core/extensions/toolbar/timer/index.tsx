@@ -7,7 +7,7 @@ import { clsx } from "clsx/lite";
 
 import "./style.css";
 
-const defaultDuration = 20;
+const defaultDuration = 40;
 const defaultWarning = 5;
 
 export const TimerSettings = {
