@@ -86,7 +86,9 @@
 .file-browser-tree {
   flex: 1;
   overflow: auto;
+  overflow-anchor: none;
   padding: var(--ui-space);
+  scrollbar-gutter: stable;
 }
 
 .file-browser details,

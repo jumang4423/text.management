@@ -29,6 +29,7 @@ const tidalWorkspace = "/Users/jumang4423/sc-dotfiles";
 const browserRoots = [
   { path: resolve(tidalWorkspace, "sets"), openByDefault: true },
   { path: resolve(tidalWorkspace, "samples"), openByDefault: true },
+  { path: resolve(tidalWorkspace, "tp-samples"), openByDefault: false },
   {
     path: resolve(
       app.getPath("home"),
@@ -255,6 +256,7 @@ const createWindow = (configuration: Config) => {
     );
 
     // Show the window
+    window.maximize();
     window.show();
   });
 
@@ -318,8 +320,11 @@ async function readBrowserRoot(
 }
 
 async function readBrowserDirectory(path: string): Promise<BrowserEntry[]> {
-  const entries = (await readdir(path, { withFileTypes: true })).sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { numeric: true })
+  // SuperDirt's DirtSoundLibrary uses String#sort on the full sample paths.
+  // Keep the browser in the same lexicographic order so its :index points to
+  // the same file SuperDirt registered (for example: 1, 10, 100, ..., 2).
+  const entries = (await readdir(path, { withFileTypes: true })).sort(
+    (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
   );
   const sampleBank = basename(path);
   let sampleIndex = 0;

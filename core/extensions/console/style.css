@@ -3,6 +3,7 @@
   max-height: 30vh;
   padding: var(--ui-space);
   background: var(--color-ui-background-inactive);
+  font-size: calc(var(--font-normal) * 0.5);
 }
 
 .cm-console:focus-visible {
@@ -18,7 +19,7 @@
   position: relative;
   padding: var(--ui-space);
   margin-left: var(--s-0-5);
-  font-size: var(--font-small);
+  font-size: inherit;
   float: right;
   z-index: 1;
   user-select: none;
@@ -60,7 +61,7 @@
 }
 
 .cm-console-message-input {
-  font-size: var(--font-small);
+  font-size: inherit;
   min-height: var(--s-2);
   background-color: var(--color-ui-background-inactive);
 }

@@ -167,10 +167,13 @@ export class SampleFileBrowser {
   }
 
   private render(entries: BrowserEntry[]) {
+    const scrollTop = this.tree.scrollTop;
+    const scrollLeft = this.tree.scrollLeft;
     this.sampleRows.clear();
     this.tree.replaceChildren(
       ...entries.map((entry) => this.renderEntry(entry, 0))
     );
+    this.tree.scrollTo({ top: scrollTop, left: scrollLeft });
 
     if (this.requestedSamplePath) {
       this.requestedSampleRow =
@@ -227,6 +230,15 @@ export class SampleFileBrowser {
         this.previewSample(row, entry.path);
         this.api.copyText(sampleName);
         this.status.textContent = `Copied ${sampleName}`;
+      });
+      tidalName.addEventListener("pointerleave", () => {
+        if (
+          this.requestedSamplePath === entry.path ||
+          this.playingSamplePath === entry.path
+        ) {
+          this.stopSamplePreview();
+          this.status.textContent = "";
+        }
       });
     } else {
       const name = row.appendChild(document.createElement("button"));
