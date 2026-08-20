@@ -100,6 +100,8 @@ const ElectronAPI = {
 
   onTidalVersion: listen("tidalVersion"),
 
+  onTidalCompletions: listen("tidalCompletions"),
+
   onTidalNow: listen("tidalNow"),
 
   onTidalHighlight: listen("tidalHighlight"),

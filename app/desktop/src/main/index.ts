@@ -192,6 +192,12 @@ const createWindow = (configuration: Config) => {
     );
 
     listeners.push(
+      tidal.on("completions", (completions) => {
+        send("tidalCompletions", completions);
+      })
+    );
+
+    listeners.push(
       listen("evaluation", (code) => {
         tidal.send(code);
       })

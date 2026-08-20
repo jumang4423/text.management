@@ -293,10 +293,16 @@ function emojiHitAtPoint(
     const tokenRect = token.getBoundingClientRect();
     const emojiStyle = getComputedStyle(token, "::before");
     const emojiSize = Number.parseFloat(emojiStyle.fontSize);
-    const nameWidth = Number.parseFloat(emojiStyle.width);
-    if (!Number.isFinite(emojiSize) || !Number.isFinite(nameWidth)) continue;
+    const nameCenter = Number.parseFloat(
+      token.style.getPropertyValue("--sample-emoji-name-center")
+    );
+    if (!Number.isFinite(emojiSize) || !Number.isFinite(nameCenter)) continue;
 
-    const centerX = tokenRect.left + nameWidth / 2;
+    // Both ordinary samples and user SynthDefs expose their visual center via
+    // this custom property. User-synth CSS positions ::before from that center,
+    // so deriving it from the pseudo-element width points at the start of long
+    // names instead of at the visible emoji.
+    const centerX = tokenRect.left + tokenRect.width * (nameCenter / 100);
     const centerY = tokenRect.top + tokenRect.height / 2;
     const padding = emojiSize * 0.08;
     const hit: EmojiHit = {

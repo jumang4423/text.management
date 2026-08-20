@@ -702,7 +702,7 @@
     "emoji": "🪵"
   },
   "hi": {
-    "emoji": "🪘"
+    "emoji": "🪇"
   },
   "kick": {
     "emoji": "💥"
@@ -718,6 +718,7 @@
   },
   "strudelsine": {
     "emoji": "💿",
-    "source": "user-synth"
+    "source": "user-synth",
+    "completionName": "strudelSine"
   }
 }

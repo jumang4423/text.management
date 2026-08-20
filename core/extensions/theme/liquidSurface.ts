@@ -121,7 +121,7 @@ function filterDefinition(id: string) {
   return filter;
 }
 
-function paletteGradient(id: string, opacity = 0.82) {
+function paletteGradient(id: string) {
   const gradient = svg("linearGradient", {
     id,
     x1: "0%",
@@ -129,13 +129,20 @@ function paletteGradient(id: string, opacity = 0.82) {
     x2: "100%",
     y2: "0%",
   });
-  const colors = ["#94A1FF", "#6ED4E3", "#D4F357", "#FFA020", "#94A1FF"];
+  const colors = [
+    "#E40303",
+    "#FF8C00",
+    "#FFED00",
+    "#008026",
+    "#004DFF",
+    "#750787",
+  ];
   colors.forEach((color, index) => {
     gradient.append(
       svg("stop", {
         offset: `${(index / (colors.length - 1)) * 100}%`,
         "stop-color": color,
-        "stop-opacity": opacity.toString(),
+        "stop-opacity": "1",
       })
     );
   });
@@ -365,9 +372,7 @@ class LiquidEditorSurface {
       ".cm-selectionMatch",
       ".cm-matchingBracket",
       ".cm-nonmatchingBracket",
-      ".cm-tooltip",
       ".cm-foldPlaceholder",
-      ".cm-tooltip-autocomplete > ul > li[aria-selected]",
     ].join(",");
     const matches = (node: Node) =>
       node instanceof Element &&
@@ -502,8 +507,7 @@ class LiquidEditorSurface {
     addElements("evaluated", ".cm-evaluated", 7);
     addElements("search", ".cm-searchMatch, .cm-selectionMatch", 5);
     addElements("bracket", ".cm-matchingBracket, .cm-nonmatchingBracket", 4);
-    addElements("body", ".cm-tooltip, .cm-foldPlaceholder", 9);
-    addElements("selection", ".cm-tooltip-autocomplete > ul > li[aria-selected]", 6);
+    addElements("body", ".cm-foldPlaceholder", 9);
     addElements("error", ".cm-line.cm-error-recoil-active", 7);
 
     if (this.view.contentDOM.classList.contains("cm-error-recoil-active")) {

@@ -19,6 +19,7 @@
   "author": "Matthew Kaney",
   "license": "GPL-3.0-or-later",
   "dependencies": {
+    "@codemirror/autocomplete": "^6.16.0",
     "@codemirror/language": "^6.10.1",
     "@codemirror/legacy-modes": "^6.4.0",
     "semver": "^7.6.1"

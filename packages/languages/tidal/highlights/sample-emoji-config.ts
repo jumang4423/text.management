@@ -4,6 +4,7 @@ export interface SampleEmojiDefinition {
   emoji: string;
   scale?: number;
   source?: "sampler" | "user-synth";
+  completionName?: string;
 }
 
 const sampleEmojiDefinitions = definitions as Record<
@@ -12,6 +13,10 @@ const sampleEmojiDefinitions = definitions as Record<
 >;
 
 export const sampleEmojiNames = Object.keys(sampleEmojiDefinitions);
+
+export const userSynthNames = Object.entries(sampleEmojiDefinitions)
+  .filter(([, definition]) => isUserSynthEmoji(definition))
+  .map(([name, definition]) => definition.completionName ?? name);
 
 export function sampleEmojiDefinition(name: string) {
   return sampleEmojiDefinitions[name.toLowerCase()];

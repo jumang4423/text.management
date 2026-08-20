@@ -31,6 +31,7 @@ interface GHCIEvents {
   openSettings: string;
   highlight: HighlightEvent;
   version: string;
+  completions: string[];
 }
 
 export class GHCI extends Engine<GHCIEvents> {
@@ -40,6 +41,7 @@ export class GHCI extends Engine<GHCIEvents> {
   private process: Promise<ChildProcessWithoutNullStreams>;
 
   private version: string;
+  private completions: string[] = [];
 
   private history: (Evaluation | Log)[] = [];
 
@@ -65,6 +67,10 @@ export class GHCI extends Engine<GHCIEvents> {
       for (let message of this.history) {
         listener(message);
       }
+    };
+
+    this.onListener["completions"] = (listener) => {
+      if (this.completions.length) listener(this.completions);
     };
   }
 
@@ -182,6 +188,9 @@ export class GHCI extends Engine<GHCIEvents> {
       }
     }
 
+    this.completions = await this.queryCompletions();
+    this.emit("completions", this.completions);
+
     // Send watch clock instruction
     await this.send("_ <- watchClock tidal");
 
@@ -190,6 +199,34 @@ export class GHCI extends Engine<GHCIEvents> {
     // });
 
     return child;
+  }
+
+  private async queryCompletions() {
+    if (!this.wrapper) return [];
+
+    const names = new Set<string>();
+    for await (const response of this.wrapper.send(
+      ':complete repl 0-10000 ""'
+    )) {
+      for (const line of response.text?.split(/\r?\n/) ?? []) {
+        if (!line.startsWith('"')) continue;
+
+        try {
+          const name = JSON.parse(line) as unknown;
+          if (
+            typeof name === "string" &&
+            /^[a-z_][A-Za-z0-9_']*$/.test(name)
+          ) {
+            names.add(name);
+          }
+        } catch {
+          // GHCi may use Haskell escapes that JSON does not recognize. Those
+          // are operators or unusual identifiers that aren't useful here.
+        }
+      }
+    }
+
+    return [...names].sort();
   }
 
   private outputFilters: RegExp[] = [];

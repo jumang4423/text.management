@@ -129,13 +129,30 @@ export const managementTheme = EditorView.theme({
   },
 
   ".cm-tooltip": {
-    border: "1px solid #181a1f",
-    backgroundColor: col("background"),
+    border: "none",
+    borderRadius: "0",
+    overflow: "hidden",
+    backgroundColor: col("ui-background"),
+    boxShadow: "none",
   },
   ".cm-tooltip-autocomplete": {
+    "& > ul": {
+      padding: "var(--ui-space) 0",
+    },
+    "& > ul > li": {
+      padding: "1px var(--s-0-5)",
+    },
     "& > ul > li[aria-selected]": {
       backgroundColor: highlightBackground,
       color: ivory,
+    },
+    "& .cm-completionIcon": {
+      display: "none",
+    },
+    "& .cm-completionDetail": {
+      marginLeft: "var(--s-0-5)",
+      color: col("syntax-comment"),
+      fontStyle: "normal",
     },
   },
 });

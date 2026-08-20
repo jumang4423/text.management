@@ -60,6 +60,18 @@ body {
   background: #6ed4e3;
 }
 
+.cm-tooltip-autocomplete,
+.cm-tooltip-autocomplete * {
+  border-radius: 0 !important;
+  font-family: Monocraft, "Fira Code", monospace !important;
+}
+
+.cm-tooltip-autocomplete {
+  background: #fff !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
 .cm-pattern-heatmap {
   background: var(--heatmap-background);
 }

@@ -1,4 +1,5 @@
 import { ElectronAPI } from "../preload";
+import type { BrowserEntry } from "../ipc";
 
 import { Text } from "@codemirror/state";
 import { basicSetup } from "@core/extensions/basicSetup";
@@ -23,11 +24,17 @@ import { fileSync } from "./file";
 import { EditorTabView } from "@core/extensions/layout/tabs/editor";
 import { AboutTabView } from "@core/extensions/layout/tabs/about";
 import { SampleFileBrowser } from "./browser";
+import {
+  recordTidalCompletionUsage,
+  setTidalFunctionCompletions,
+  setTidalSampleCompletions,
+} from "@management/lang-tidal/completions";
 
 import {
   evaluationWithHighlights,
   highlighter,
 } from "@management/lang-tidal/highlights";
+import { userSynthNames } from "@management/lang-tidal/highlights/sample-emoji-config";
 import { EditorView, keymap } from "@codemirror/view";
 import {
   Evaluation as EditorEvaluation,
@@ -114,6 +121,7 @@ function rememberEvaluation(evaluated: EditorEvaluation) {
 
 function sendEvaluation(request: { code: string }) {
   queueEvaluation(request.code);
+  recordTidalCompletionUsage(request.code);
   api.evaluate(request);
 }
 
@@ -275,6 +283,28 @@ const { api } = window as Window &
   typeof globalThis & {
     api: typeof ElectronAPI;
   };
+
+api.onTidalCompletions(setTidalFunctionCompletions);
+api.onBrowserTree((entries) => {
+  setTidalSampleCompletions([
+    ...sampleNamesFromBrowser(entries),
+    ...userSynthNames,
+  ]);
+});
+
+function sampleNamesFromBrowser(entries: readonly BrowserEntry[]) {
+  const names = new Set<string>();
+
+  const visit = (entry: BrowserEntry) => {
+    if (entry.kind === "sample" && entry.tidalName) {
+      names.add(entry.tidalName.split(":", 1)[0]);
+    }
+    for (const child of entry.children ?? []) visit(child);
+  };
+
+  for (const entry of entries) visit(entry);
+  return [...names];
+}
 
 const configuration = new Config();
 api.onSettingsData((data) => {

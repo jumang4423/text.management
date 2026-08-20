@@ -39,6 +39,7 @@ export interface ToRendererChannels {
   close: { id: string };
   console: Evaluation | Log;
   tidalVersion: string;
+  tidalCompletions: string[];
   tidalNow: number;
   toggleConsole: undefined;
   showAbout: string;
