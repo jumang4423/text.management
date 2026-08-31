@@ -3,6 +3,7 @@ import type { BrowserEntry } from "../ipc";
 
 import { Text } from "@codemirror/state";
 import { basicSetup } from "@core/extensions/basicSetup";
+import { organicCodeContour } from "@core/extensions/theme/organicContour";
 import { oneDark } from "@core/extensions/theme/theme";
 import { tidal } from "@management/lang-tidal/editor";
 
@@ -368,6 +369,7 @@ export class Editor {
                 doc,
                 extensions: [
                   oneDark,
+                  organicCodeContour,
                   evaluationWithHighlights(sendEvaluation),
                   highlighter(api),
                   evaluation((evaluated) => {

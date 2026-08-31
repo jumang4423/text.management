@@ -1,8 +1,8 @@
-Copyright (c) 2022, Idrees Hassan (https://github.com/IdreesInc/Monocraft)
+Copyright 2022–2024 Helena Zhang (helenazhang.com).
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
+https://openfontlicense.org
 
 
 -----------------------------------------------------------

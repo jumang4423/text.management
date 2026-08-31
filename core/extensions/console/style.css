@@ -6,6 +6,23 @@
   font-size: calc(var(--font-normal) * 0.5);
 }
 
+.cm-console.cm-console-peek {
+  max-height: 64px;
+  padding: 2px var(--ui-space);
+  font-size: calc(var(--font-normal) * 0.42);
+}
+
+.cm-console-peek .cm-console-message:not(:last-child),
+.cm-console-peek .cm-console-message-input {
+  display: none;
+}
+
+.cm-console-peek .cm-console-message-source,
+.cm-console-peek .cm-console-message-output {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
 .cm-console:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 4px var(--color-focus-border);

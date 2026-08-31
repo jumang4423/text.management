@@ -41,6 +41,12 @@ export function console(history: (Evaluation | Log)[] = []) {
   let visible = true;
 
   const toggleVisibility = (value?: boolean) => {
+    if (value === undefined && visible && consoleNode.classList.contains("cm-console-peek")) {
+      consoleNode.classList.remove("cm-console-peek");
+      return;
+    }
+
+    if (value === undefined) consoleNode.classList.remove("cm-console-peek");
     visible = value ?? !visible;
 
     consoleNode.style.display = visible ? "inherit" : "none";
@@ -53,6 +59,7 @@ export function console(history: (Evaluation | Log)[] = []) {
         messageConstructor(message)
       );
 
+      consoleNode.classList.add("cm-console-peek");
       toggleVisibility(true);
       lastElement.scrollIntoView({ behavior: "smooth" });
     },

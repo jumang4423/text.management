@@ -15,6 +15,43 @@ export const restingSpring: DampedSpringSample = {
   energy: 0,
 };
 
+// Unit step response for the same spring model. Unlike the impulse helper
+// below, this starts at 0 and settles at 1, so it can drive transitions while
+// retaining the same overshoot frequency and damping as reaction animations.
+export function dampedSpringStep(
+  elapsedMs: number,
+  { stiffness, damping }: DampedSpringOptions
+) {
+  const elapsed = Math.max(0, elapsedMs) / 1_000;
+  const halfDamping = damping / 2;
+  const dampedFrequencySquared = stiffness - halfDamping * halfDamping;
+
+  if (dampedFrequencySquared > 0.000001) {
+    const frequency = Math.sqrt(dampedFrequencySquared);
+    const envelope = Math.exp(-halfDamping * elapsed);
+    return (
+      1 -
+      envelope *
+        (Math.cos(frequency * elapsed) +
+          (halfDamping / frequency) * Math.sin(frequency * elapsed))
+    );
+  }
+
+  if (Math.abs(dampedFrequencySquared) <= 0.000001) {
+    const envelope = Math.exp(-halfDamping * elapsed);
+    return 1 - envelope * (1 + halfDamping * elapsed);
+  }
+
+  const root = Math.sqrt(-dampedFrequencySquared);
+  const firstRate = -halfDamping + root;
+  const secondRate = -halfDamping - root;
+  const displacement =
+    (-secondRate * Math.exp(firstRate * elapsed) +
+      firstRate * Math.exp(secondRate * elapsed)) /
+    (firstRate - secondRate);
+  return 1 - displacement;
+}
+
 // Unit-mass, underdamped spring kicked from rest. Displacement is normalized so
 // the first overshoot reaches 1, while velocity is normalized to 1 at impact.
 // Keeping both values lets callers tie squash/stretch to speed instead of

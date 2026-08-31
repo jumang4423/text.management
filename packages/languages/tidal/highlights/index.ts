@@ -8,6 +8,10 @@ import {
 import { Decoration, EditorView, ViewPlugin, keymap } from "@codemirror/view";
 
 import { dampedSpringImpulse, restingSpring } from "@core/animation/spring";
+import {
+  organicContourReactionEffect,
+  type OrganicContourReactionDetail,
+} from "@core/extensions/theme/organicContour";
 
 import {
   evaluation,
@@ -232,6 +236,10 @@ export function highlighter(api: typeof ElectronAPI): Extension {
       if (toAdd.length) {
         effects.push(highlightAddEffect.of(toAdd));
         effects.push(heatmapAddEffect.of(toAdd));
+        for (const highlight of toAdd) {
+          const detail = organicContourReaction(view.state, highlight);
+          if (detail) effects.push(organicContourReactionEffect.of(detail));
+        }
       }
 
       pendingHighlights = stillPending;
@@ -267,6 +275,42 @@ export function highlighter(api: typeof ElectronAPI): Extension {
     Prec.highest(highlightDecorations),
     Prec.lowest(sampleEmojiDecorations),
   ];
+}
+
+function absoluteHighlightRange(
+  state: EditorState,
+  highlight: TimestampedHighlightEvent
+) {
+  let miniFrom = -1;
+  let miniTo = -1;
+  state.field(mininotationStringField).between(
+    0,
+    state.doc.length,
+    (from, to, mini) => {
+      if (mini.id !== highlight.miniID) return;
+      miniFrom = from;
+      miniTo = to;
+    }
+  );
+  if (miniFrom < 0 || miniTo < 0) return null;
+
+  const from = Math.max(miniFrom, Math.min(miniTo, miniFrom + highlight.from));
+  const to = Math.max(from, Math.min(miniTo, miniFrom + highlight.to));
+  return { from, to };
+}
+
+function organicContourReaction(
+  state: EditorState,
+  highlight: TimestampedHighlightEvent
+): OrganicContourReactionDetail | null {
+  const range = absoluteHighlightRange(state, highlight);
+  if (!range) return null;
+  return {
+    ...range,
+    time: highlight.time,
+    surprise: highlight.surprise,
+    direction: springDirection(highlight),
+  };
 }
 
 interface EmojiHit {

@@ -1,14 +1,13 @@
 @import url(./scrollbars.css);
 
 @font-face {
-  font-family: "Monocraft";
-  src: local("Monocraft"), url("../Monocraft.ttf") format("truetype");
+  font-family: "Departure Mono";
+  src:
+    local("Departure Mono"),
+    url("../DepartureMono-1.500.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
   font-display: swap;
-}
-
-@font-face {
-  font-family: "Fira Code";
-  src: local("Fira Code"), url("../FiraCode-VF.woff2") format("woff2");
 }
 
 :root {
@@ -21,7 +20,7 @@
   --ui-space: 4px;
   --font-normal: 19.87px;
   --font-small: 13.25px;
-  font-family: Monocraft, "Fira Code", monospace;
+  font-family: "Departure Mono", monospace;
   color: var(--color-foreground);
   font-size: var(--font-normal);
   line-height: var(--s-2);
@@ -63,7 +62,7 @@ body {
 .cm-tooltip-autocomplete,
 .cm-tooltip-autocomplete * {
   border-radius: 0 !important;
-  font-family: Monocraft, "Fira Code", monospace !important;
+  font-family: "Departure Mono", monospace !important;
 }
 
 .cm-tooltip-autocomplete {
@@ -118,7 +117,7 @@ body {
   align-items: center;
   justify-content: center;
   color: initial;
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", Monocraft, sans-serif;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Departure Mono", sans-serif;
   font-size: var(--sample-emoji-size, 1em);
   line-height: 1;
   text-shadow: var(--sample-emoji-shadow, none);
