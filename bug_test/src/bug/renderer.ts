@@ -28,6 +28,34 @@ interface CreatureBounds {
   height: number;
 }
 
+function staticNoise(seed: number) {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function traceWobblyCircle(
+  context: CanvasRenderingContext2D,
+  centre: Vec2,
+  radius: number,
+  seed: number,
+  irregularity = 0.045
+) {
+  const steps = 20;
+  context.beginPath();
+  for (let index = 0; index <= steps; index += 1) {
+    const sample = index % steps;
+    const angle = (sample / steps) * Math.PI * 2;
+    const wobble = 1 + (staticNoise(seed * 31 + sample) - 0.5) * irregularity;
+    const point = {
+      x: centre.x + Math.cos(angle) * radius * wobble,
+      y: centre.y + Math.sin(angle) * radius * wobble,
+    };
+    if (index === 0) context.moveTo(point.x, point.y);
+    else context.lineTo(point.x, point.y);
+  }
+  context.closePath();
+}
+
 function hardenCreaturePixels(
   context: CanvasRenderingContext2D,
   width: number,
@@ -356,8 +384,10 @@ export class BugRenderer {
       context.restore();
     }
 
-    this.drawLegs(body, context, interpolation);
+    this.drawLegs(body, context, interpolation, -1);
+    this.drawNearLegAttachments(body, context, interpolation);
     this.drawBody(body, context, interpolation);
+    this.drawLegs(body, context, interpolation, 1, false);
     this.drawHead(body, context, interpolation);
   }
 
@@ -426,17 +456,21 @@ export class BugRenderer {
   private drawLegs(
     body: CaterpillarBody,
     context: CanvasRenderingContext2D,
-    interpolation: number
+    interpolation: number,
+    sideLayer: -1 | 1,
+    includeAttachment = true
   ) {
     context.save();
     context.lineCap = "round";
     context.lineJoin = "round";
 
     for (const [legIndex, leg] of body.legs.entries()) {
+      if (leg.side !== sideLayer) continue;
       const points = body.renderLegPointsAt(legIndex, interpolation);
       const growth = clamp(body.growth, 0.05, 1);
       const linkWidths = [4.6, 4.1, 3.6];
-      for (let index = 0; index < 3; index += 1) {
+      const firstVisibleIndex = includeAttachment ? 0 : 1;
+      for (let index = firstVisibleIndex; index < 3; index += 1) {
         context.strokeStyle = "#000000";
         context.lineWidth = linkWidths[index] * growth;
         context.beginPath();
@@ -446,13 +480,18 @@ export class BugRenderer {
       }
 
       // Large white joint discs make the actual three-link mechanism readable.
-      for (let index = 0; index < 3; index += 1) {
+      for (let index = firstVisibleIndex; index < 3; index += 1) {
         const radius = (index === 0 ? 6.2 : index === 1 ? 6.8 : 6.3) * growth;
         context.fillStyle = "#ffffff";
         context.strokeStyle = "#000000";
         context.lineWidth = 2.2 * growth;
-        context.beginPath();
-        context.arc(points[index].x, points[index].y, radius, 0, Math.PI * 2);
+        traceWobblyCircle(
+          context,
+          points[index],
+          radius,
+          300 + legIndex * 19 + index * 5,
+          0.04
+        );
         context.fill();
         context.stroke();
       }
@@ -461,8 +500,50 @@ export class BugRenderer {
       context.fillStyle = "#ffffff";
       context.strokeStyle = "#000000";
       context.lineWidth = 2.7 * growth;
+      traceWobblyCircle(
+        context,
+        points[3],
+        handRadius,
+        700 + legIndex * 29,
+        0.045
+      );
+      context.fill();
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  private drawNearLegAttachments(
+    body: CaterpillarBody,
+    context: CanvasRenderingContext2D,
+    interpolation: number
+  ) {
+    context.save();
+    context.lineCap = "round";
+    context.lineJoin = "round";
+
+    for (const [legIndex, leg] of body.legs.entries()) {
+      if (leg.side !== 1) continue;
+      const points = body.renderLegPointsAt(legIndex, interpolation);
+      const growth = clamp(body.growth, 0.05, 1);
+      context.strokeStyle = "#000000";
+      context.lineWidth = 4.6 * growth;
       context.beginPath();
-      context.arc(points[3].x, points[3].y, handRadius, 0, Math.PI * 2);
+      context.moveTo(points[0].x, points[0].y);
+      context.lineTo(points[1].x, points[1].y);
+      context.stroke();
+
+      const rootRadius = 6.2 * growth;
+      context.fillStyle = "#ffffff";
+      context.strokeStyle = "#000000";
+      context.lineWidth = 2.2 * growth;
+      traceWobblyCircle(
+        context,
+        points[0],
+        rootRadius,
+        300 + legIndex * 19,
+        0.04
+      );
       context.fill();
       context.stroke();
     }
@@ -497,8 +578,13 @@ export class BugRenderer {
       context.fillStyle = "#ffffff";
       context.strokeStyle = "#000000";
       context.lineWidth = 2.8;
-      context.beginPath();
-      context.arc(node.x, node.y, radius, 0, Math.PI * 2);
+      traceWobblyCircle(
+        context,
+        node,
+        radius,
+        1500 + index * 31,
+        0.045
+      );
       context.fill();
       context.stroke();
     }

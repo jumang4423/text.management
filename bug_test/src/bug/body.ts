@@ -1442,10 +1442,17 @@ export class CaterpillarBody {
       const coupling = neighbours * 0.5 - this.tissueCompression[index];
       // Intentionally under-damped: impact overshoots once, then the coupled
       // chain absorbs it. This is the springiness of flesh, not elastic legs.
+      // Rear discs are progressively softer and less damped, so an impact
+      // reaches the tail as a delayed spring response instead of scaling the
+      // complete torso at once.
+      const rearward = index / Math.max(1, this.nodes.length - 1);
+      const localSpring = lerp(24, 16, rearward);
+      const neighbourSpring = lerp(18, 14, rearward);
+      const damping = lerp(7.2, 5.4, rearward);
       const acceleration =
-        22 * (target - this.tissueCompression[index]) +
-        17 * coupling -
-        6.4 * this.tissueVelocity[index];
+        localSpring * (target - this.tissueCompression[index]) +
+        neighbourSpring * coupling -
+        damping * this.tissueVelocity[index];
       nextVelocity[index] = clamp(
         this.tissueVelocity[index] + acceleration * delta,
         -5,
