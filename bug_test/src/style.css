@@ -148,6 +148,36 @@ input {
   pointer-events: none;
 }
 
+.cm-bug-chewing {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  transform-origin: 50% 55%;
+  background: #ffffff;
+  box-shadow: -2px 0 #ffffff, 2px 0 #ffffff;
+  animation: bug-code-chew 230ms steps(2, end) infinite;
+  will-change: transform;
+}
+
+@keyframes bug-code-chew {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1, 1);
+  }
+
+  25% {
+    transform: translate(-2px, 1px) scale(1.08, 0.78);
+  }
+
+  50% {
+    transform: translate(2px, -1px) scale(0.86, 1.18);
+  }
+
+  75% {
+    transform: translate(-1px, 1px) scale(1.03, 0.9);
+  }
+}
+
 .lab-panel {
   overflow: auto;
   padding: 14px;
@@ -163,10 +193,6 @@ input {
   border-bottom: 1px solid #4b5049;
   color: #aeb3ab;
   letter-spacing: 0.08em;
-}
-
-#mode-label {
-  color: #d4f357;
 }
 
 .vitals {
@@ -201,7 +227,7 @@ input {
 
 .controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 6px;
   margin: 14px 0;
 }

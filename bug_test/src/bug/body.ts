@@ -139,6 +139,9 @@ export class CaterpillarBody {
     sleep: 0,
     fear: 0,
     gut: 0,
+    chew: 0,
+    poop: 0,
+    edgeAvoidance: 1,
   };
 
   private legsActivated = false;
@@ -154,12 +157,20 @@ export class CaterpillarBody {
   private readonly curvatureScale: number;
   private readonly headTrail: Vec2[] = [];
   private breathPhase = 0;
+  private chewPhase = 0;
+  private chewExcitement = 0;
+  private poopPhase = 0;
+  private poopExcitement = 0;
   private readonly tissueCompression: number[];
   private readonly tissueVelocity: number[];
   private renderPreviousNodes: Vec2[] = [];
   private renderPreviousLegPoints: Vec2[][] = [];
   private renderPreviousRadii: number[] = [];
   private renderPreviousDirection: Vec2 = { x: 1, y: 0 };
+  private renderPreviousChewPhase = 0;
+  private renderPreviousChewExcitement = 0;
+  private renderPreviousPoopPhase = 0;
+  private renderPreviousPoopExcitement = 0;
 
   constructor(
     origin: Vec2,
@@ -274,10 +285,11 @@ export class CaterpillarBody {
     const torsoScale = index === 0 ? 1 : 1.3;
     // Axial compression conserves a little apparent volume: a shortened disc
     // becomes wider, then settles with an under-damped tissue response.
+    const tissueGain = 0.07 + this.chewExcitement * 0.12;
     const tissueScale = clamp(
-      1 + (this.tissueCompression[index] ?? 0) * 0.07,
-      0.93,
-      1.09
+      1 + (this.tissueCompression[index] ?? 0) * tissueGain,
+      0.82,
+      1.22
     );
     return (
       this.baseRadius *
@@ -302,12 +314,22 @@ export class CaterpillarBody {
     );
     this.renderPreviousRadii = this.nodes.map((_, index) => this.radiusAt(index));
     this.renderPreviousDirection = { ...this.travelDirection };
+    this.renderPreviousChewPhase = this.chewPhase;
+    this.renderPreviousChewExcitement = this.chewExcitement;
+    this.renderPreviousPoopPhase = this.poopPhase;
+    this.renderPreviousPoopExcitement = this.poopExcitement;
   }
 
   renderNodeAt(index: number, interpolation: number): Vec2 {
     const current = this.nodes[index]?.position ?? this.head;
     const previous = this.renderPreviousNodes[index] ?? current;
-    return lerpVec(previous, current, clamp(interpolation));
+    return add(
+      add(
+        lerpVec(previous, current, clamp(interpolation)),
+        this.renderChewOffsetAt(index, interpolation)
+      ),
+      this.renderPoopOffsetAt(index, interpolation)
+    );
   }
 
   renderLegPointsAt(
@@ -320,8 +342,17 @@ export class CaterpillarBody {
       return [{ ...head }, { ...head }, { ...head }, { ...head }];
     }
     const previous = this.renderPreviousLegPoints[legIndex] ?? current;
-    return current.map((point, pointIndex) =>
+    const rendered = current.map((point, pointIndex) =>
       lerpVec(previous[pointIndex] ?? point, point, clamp(interpolation))
+    ) as [Vec2, Vec2, Vec2, Vec2];
+    const leg = this.legs[legIndex];
+    const rootOffset = add(
+      this.renderChewOffsetAt(leg?.nodeIndex ?? 0, interpolation),
+      this.renderPoopOffsetAt(leg?.nodeIndex ?? 0, interpolation)
+    );
+    const offsetWeights = [1, 0.72, 0.3, 0] as const;
+    return rendered.map((point, pointIndex) =>
+      add(point, scale(rootOffset, offsetWeights[pointIndex]))
     ) as [Vec2, Vec2, Vec2, Vec2];
   }
 
@@ -348,7 +379,8 @@ export class CaterpillarBody {
     this.lastControl = control;
     const requestedDirection = this.wallAwareDirection(
       normalize(control.direction, this.desiredForward()),
-      bounds
+      bounds,
+      clamp(control.edgeAvoidance)
     );
     const requestedAngle = Math.atan2(requestedDirection.y, requestedDirection.x);
     const headingError = wrapAngle(requestedAngle - this.headingAngle);
@@ -456,6 +488,14 @@ export class CaterpillarBody {
     this.stepGroupAge = 0;
     this.activeGroupHasLanded = false;
     this.breathPhase = 0;
+    this.chewPhase = 0;
+    this.chewExcitement = 0;
+    this.poopPhase = 0;
+    this.poopExcitement = 0;
+    this.renderPreviousChewPhase = 0;
+    this.renderPreviousChewExcitement = 0;
+    this.renderPreviousPoopPhase = 0;
+    this.renderPreviousPoopExcitement = 0;
     for (const velocity of this.tractionVelocity) {
       velocity.x = 0;
       velocity.y = 0;
@@ -1066,7 +1106,11 @@ export class CaterpillarBody {
     };
   }
 
-  private wallAwareDirection(direction: Vec2, bounds: Rect): Vec2 {
+  private wallAwareDirection(
+    direction: Vec2,
+    bounds: Rect,
+    softAvoidance: number
+  ): Vec2 {
     const padding = this.baseRadius + 7;
     const margin = 72;
     const edge = padding + 5;
@@ -1108,11 +1152,14 @@ export class CaterpillarBody {
       y: top * top - bottom * bottom,
     };
     const pressure = clamp(magnitude(inward));
-    if (pressure < 0.001) return reflectedDirection;
+    if (pressure < 0.001 || softAvoidance <= 0.001) {
+      return reflectedDirection;
+    }
 
     const inwardDirection = normalize(inward, scale(reflectedDirection, -1));
     const pointingOutward = clamp(-dot(reflectedDirection, inwardDirection));
-    const avoidanceStrength = pressure * (0.85 + pointingOutward * 1.25);
+    const avoidanceStrength =
+      pressure * (0.85 + pointingOutward * 1.25) * softAvoidance;
     return normalize(
       add(reflectedDirection, scale(inwardDirection, avoidanceStrength)),
       inwardDirection
@@ -1406,6 +1453,27 @@ export class CaterpillarBody {
   private updateOrganicTissue(deltaSeconds: number, locomotionPaused: boolean) {
     const delta = Math.min(1 / 30, deltaSeconds);
     const effort = clamp(this.lastControl.speed / 130);
+    const chewTarget = clamp(this.lastControl.chew);
+    this.chewExcitement = lerp(
+      this.chewExcitement,
+      chewTarget,
+      exponentialApproach(chewTarget > this.chewExcitement ? 11 : 5, delta)
+    );
+    if (this.chewExcitement > 0.001) {
+      // Body.update runs five locomotion substeps per display step. This rate
+      // therefore produces roughly three asymmetric chewing pulses per second.
+      this.chewPhase = (this.chewPhase + delta * 0.58) % 1;
+    }
+    const poopTarget = clamp(this.lastControl.poop);
+    this.poopExcitement = lerp(
+      this.poopExcitement,
+      poopTarget,
+      exponentialApproach(poopTarget > this.poopExcitement ? 14 : 6, delta)
+    );
+    if (this.poopExcitement > 0.001) {
+      // Five body substeps turn this into a quick 4.3 Hz rear-end shimmy.
+      this.poopPhase = (this.poopPhase + delta * 0.86) % 1;
+    }
     // BugWorld deliberately advances locomotion several times per display
     // frame. These low per-step rates therefore read as a calm 0.4-0.65 Hz
     // breath in real time, becoming only slightly quicker while walking.
@@ -1419,6 +1487,13 @@ export class CaterpillarBody {
       // A tiny phase delay prevents mechanical simultaneous scaling without
       // turning respiration into a travelling sine-wave locomotion trick.
       const breath = this.asymmetricBreath(this.breathPhase - index * 0.018);
+      const chewPulse = this.asymmetricBreath(
+        this.chewPhase - index * 0.115
+      );
+      const rearward = index / Math.max(1, this.nodes.length - 1);
+      const poopPulse =
+        Math.sin(this.poopPhase * Math.PI * 2 - index * 0.28) *
+        Math.pow(rearward, 1.8);
       let touchdown = 0;
       let supportLoad = 0;
       let influenceTotal = 0;
@@ -1435,7 +1510,12 @@ export class CaterpillarBody {
         : clamp(touchdown * 0.46, 0, 1.1);
       const loadCompression = clamp((supportLoad - 0.12) * 0.24, -0.08, 0.2);
       const target =
-        maturity * (breath * 0.52 + contactCompression + loadCompression);
+        maturity *
+        (breath * 0.52 +
+          chewPulse * this.chewExcitement * (index === 0 ? 0.72 : 1.15) +
+          poopPulse * this.poopExcitement * 0.72 +
+          contactCompression +
+          loadCompression);
       const neighbours =
         (this.tissueCompression[index - 1] ?? this.tissueCompression[index]) +
         (this.tissueCompression[index + 1] ?? this.tissueCompression[index]);
@@ -1445,7 +1525,6 @@ export class CaterpillarBody {
       // Rear discs are progressively softer and less damped, so an impact
       // reaches the tail as a delayed spring response instead of scaling the
       // complete torso at once.
-      const rearward = index / Math.max(1, this.nodes.length - 1);
       const localSpring = lerp(24, 16, rearward);
       const neighbourSpring = lerp(18, 14, rearward);
       const damping = lerp(7.2, 5.4, rearward);
@@ -1477,7 +1556,67 @@ export class CaterpillarBody {
       ((this.tissueCompression[index] ?? 0) +
         (this.tissueCompression[index + 1] ?? 0)) *
       0.5;
-    return growthLength * clamp(1 - compression * 0.03, 0.965, 1.03);
+    const chewShortening = 0.03 + this.chewExcitement * 0.045;
+    return growthLength * clamp(
+      1 - compression * chewShortening,
+      0.9,
+      1.08
+    );
+  }
+
+  private renderChewOffsetAt(index: number, interpolation: number): Vec2 {
+    const amount = clamp(interpolation);
+    const excitement = lerp(
+      this.renderPreviousChewExcitement,
+      this.chewExcitement,
+      amount
+    );
+    if (excitement < 0.001) return { x: 0, y: 0 };
+
+    let phaseDelta = this.chewPhase - this.renderPreviousChewPhase;
+    if (phaseDelta > 0.5) phaseDelta -= 1;
+    if (phaseDelta < -0.5) phaseDelta += 1;
+    const phase =
+      (this.renderPreviousChewPhase + phaseDelta * amount) * Math.PI * 2 -
+      index * 0.62;
+    const tangent = this.tangentAt(index);
+    const normal = perpendicular(tangent);
+    const rearward = index / Math.max(1, this.nodes.length - 1);
+    const amplitude = lerp(8.5, 4.8, rearward) * excitement;
+    const sideways =
+      (Math.sin(phase) + Math.sin(phase * 2.15 + 0.7) * 0.24) *
+      amplitude;
+    const axial = Math.sin(phase * 1.55 + 1.1) * amplitude * 0.62;
+    return add(scale(normal, sideways), scale(tangent, axial));
+  }
+
+  private renderPoopOffsetAt(index: number, interpolation: number): Vec2 {
+    const amount = clamp(interpolation);
+    const excitement = lerp(
+      this.renderPreviousPoopExcitement,
+      this.poopExcitement,
+      amount
+    );
+    const rearward = index / Math.max(1, this.nodes.length - 1);
+    const rearWeight = Math.pow(rearward, 2.15);
+    if (excitement * rearWeight < 0.001) return { x: 0, y: 0 };
+
+    let phaseDelta = this.poopPhase - this.renderPreviousPoopPhase;
+    if (phaseDelta > 0.5) phaseDelta -= 1;
+    if (phaseDelta < -0.5) phaseDelta += 1;
+    const phase =
+      (this.renderPreviousPoopPhase + phaseDelta * amount) * Math.PI * 2 -
+      rearward * 0.34;
+    const tangent = this.tangentAt(index);
+    const normal = perpendicular(tangent);
+    const sideways =
+      (Math.sin(phase) + Math.sin(phase * 2 + 0.6) * 0.24) *
+      15 *
+      rearWeight *
+      excitement;
+    const squat =
+      -Math.abs(Math.sin(phase)) * 4.2 * rearWeight * excitement;
+    return add(scale(normal, sideways), scale(tangent, squat));
   }
 
   private releaseOverloadedContacts(

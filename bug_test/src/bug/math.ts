@@ -60,6 +60,13 @@ export function centerOf(rect: Rect): Vec2 {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
+export function closestPointOnRect(point: Vec2, rect: Rect): Vec2 {
+  return {
+    x: clamp(point.x, rect.x, rect.x + rect.width),
+    y: clamp(point.y, rect.y, rect.y + rect.height),
+  };
+}
+
 export function smoothstep(value: number) {
   const t = clamp(value);
   return t * t * (3 - 2 * t);

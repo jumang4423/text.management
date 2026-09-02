@@ -1,5 +1,10 @@
 import { undo } from "@codemirror/commands";
-import type { EditorView } from "@codemirror/view";
+import { StateEffect, StateField } from "@codemirror/state";
+import {
+  Decoration,
+  EditorView,
+  type DecorationSet,
+} from "@codemirror/view";
 
 import { clamp, type Rect, type Vec2 } from "../bug/math";
 import type {
@@ -23,17 +28,49 @@ interface CandidateRange {
   kind: FoodKind;
 }
 
+interface ChewingRange {
+  from: number;
+  to: number;
+}
+
+const setChewingRange = StateEffect.define<ChewingRange | null>();
+
+const chewingDecorations = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setChewingRange)) continue;
+      const range = effect.value;
+      next = range
+        ? Decoration.set([
+            Decoration.mark({ class: "cm-bug-chewing" }).range(
+              range.from,
+              range.to
+            ),
+          ])
+        : Decoration.none;
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 export class CodeMirrorHabitat implements HabitatAdapter {
   private readonly heatSources: HeatSource[] = [];
   private lastSnapshot: HabitatSnapshot | null = null;
   private lastSnapshotAt = -Infinity;
   private revision = 0;
   private snapshotRevision = -1;
+  private chewingFoodId: string | null = null;
 
   constructor(
     readonly view: EditorView,
     private readonly stage: HTMLElement
   ) {
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(chewingDecorations),
+    });
     view.scrollDOM.addEventListener("scroll", this.invalidateViewport, {
       passive: true,
     });
@@ -101,6 +138,17 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       x: point.x - snapshot.canvasOffsetX + snapshot.scrollX,
       y: point.y - snapshot.canvasOffsetY + snapshot.scrollY,
     };
+  }
+
+  setChewing(edible: EdibleCode | null) {
+    const nextId = edible?.id ?? null;
+    if (nextId === this.chewingFoodId) return;
+    this.chewingFoodId = nextId;
+    this.view.dispatch({
+      effects: setChewingRange.of(
+        edible ? { from: edible.from, to: edible.to } : null
+      ),
+    });
   }
 
   eat(edible: EdibleCode): EatenMatter | null {

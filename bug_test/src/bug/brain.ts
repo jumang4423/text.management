@@ -1,13 +1,12 @@
 import {
-  add,
   centerOf,
   clamp,
+  closestPointOnRect,
   distance,
-  exponentialApproach,
   normalize,
   Random,
-  scale,
   subtract,
+  type Rect,
   type Vec2,
 } from "./math";
 import type {
@@ -18,361 +17,264 @@ import type {
   EdibleCode,
 } from "./types";
 
-interface BehaviourDrive {
-  behaviour: Behaviour;
-  strength: number;
-}
+const HATCH_SECONDS = 0.65;
+const REST_SECONDS_MIN = 2;
+const REST_SECONDS_MAX = 8;
+const ROAM_ARRIVAL_RADIUS = 52;
+const POINTER_DANGER_RADIUS = 180;
+const POINTER_SAFE_RADIUS = 460;
+const HUNGRY_THRESHOLD = 0.78;
 
 export class CaterpillarBrain {
   hunger = 0.67;
-  energy = 0.82;
-  fear = 0;
-  curiosity = 0.68;
-  fatigue = 0.12;
-  gut = 0;
   behaviour: Behaviour = "hatching";
   targetFoodId: string | null = null;
 
   private readonly random = new Random(0xc0deba5e);
   private age = 0;
-  private behaviourAge = 0;
-  private wanderTarget: Vec2 | null = null;
-  private wanderExpiresAt = 0;
-  private currentDrive = 0;
-  private habituation = 0;
-  private lastStimulusAt = -Infinity;
-  private lastThreatPosition: Vec2 | null = null;
-  private satisfaction = 0;
-  private pointerArrived = false;
+  private restRemaining = 0;
+  private roamTarget: Vec2 | null = null;
+  private pointerThreatened = false;
 
   update(senses: BrainSenses): BrainDecision {
-    const dt = senses.deltaSeconds;
-    this.age += dt;
-    this.behaviourAge += dt;
-    this.hunger = clamp(this.hunger + dt * (0.0105 + this.energy * 0.0025));
-    this.fatigue = clamp(
-      this.fatigue +
-        dt *
-          (this.behaviour === "sleeping"
-            ? -0.2
-            : this.behaviour === "fleeing"
-              ? 0.04
-              : 0.008)
-    );
-    this.energy = clamp(
-      this.energy +
-        dt *
-          (this.behaviour === "sleeping"
-            ? 0.13
-            : this.behaviour === "fleeing"
-              ? -0.035
-              : -0.004)
-    );
-    this.fear = clamp(this.fear - dt * (0.34 + this.habituation * 0.2));
-    this.habituation = clamp(this.habituation - dt * 0.045);
-    this.satisfaction = clamp(this.satisfaction - dt * 0.12);
+    const deltaSeconds = senses.deltaSeconds;
+    this.age += deltaSeconds;
+    this.hunger = clamp(this.hunger + deltaSeconds * 0.032);
 
-    this.readStimulus(senses);
-
-    const pointerDistance = senses.pointer.active
-      ? distance(senses.pointer.position, senses.head)
-      : Infinity;
-    // Pointer-follow test mode: this branch intentionally outranks hatching,
-    // chewing, hunger, fear and every autonomous behaviour.
-    if (senses.pointer.active) {
-      this.switchBehaviour("investigating", 2);
+    if (this.pointerIsThreatening(senses)) {
+      this.behaviour = "fleeing";
       this.targetFoodId = null;
-      if (this.pointerArrived) {
-        if (pointerDistance > 96) this.pointerArrived = false;
-      } else if (pointerDistance < 72) {
-        this.pointerArrived = true;
-      }
       const direction = normalize(
-        subtract(senses.pointer.position, senses.head),
+        subtract(senses.head, senses.pointer.position),
         { x: 1, y: 0 }
       );
-      const decision = this.decisionFor(senses, direction, 2);
-      // Chase at one cruise speed. A hysteretic arrival zone replaces the old
-      // distance multiplier, which visibly accelerated and decelerated the bug.
-      if (this.pointerArrived) decision.control.speed = 0;
-      return decision;
+      return this.decision(direction);
     }
-    this.pointerArrived = false;
 
-    if (this.age < 0.65) {
+    if (this.age < HATCH_SECONDS) {
       this.behaviour = "hatching";
-      return this.decisionFor(senses, { x: 1, y: 0 }, 0);
+      return this.decision({ x: 1, y: 0 });
+    }
+
+    if (this.behaviour === "fleeing" || this.behaviour === "hatching") {
+      this.beginRest();
     }
 
     if (senses.chewing) {
-      this.switchBehaviour("chewing", 2);
-      const target = senses.foods.find((food) => food.id === this.targetFoodId);
+      this.behaviour = "chewing";
+      const target = senses.foods.find(
+        (food) => food.id === this.targetFoodId
+      );
       const direction = target
         ? normalize(subtract(centerOf(target.rect), senses.head))
         : { x: 1, y: 0 };
-      return this.decisionFor(senses, direction, 2);
+      return this.decision(direction);
     }
 
-    if (this.behaviour === "investigating") {
-      this.switchBehaviour("wandering", 0.45);
+    if (senses.toiletTarget) {
+      this.behaviour = "toileting";
+      this.targetFoodId = null;
+      this.roamTarget = null;
+      const toiletDistance = distance(senses.toiletTarget, senses.head);
+      const approach = clamp((toiletDistance - 24) / 150);
+      return this.decision(
+        normalize(subtract(senses.toiletTarget, senses.head)),
+        20 + approach * 102
+      );
     }
 
-    const targetFood = this.chooseFood(senses.foods, senses.head);
-    const drives: BehaviourDrive[] = [
-      {
-        behaviour: "fleeing",
-        strength:
-          this.fear * 1.65 +
-          (pointerDistance < 90 && senses.pointer.speed > 360 ? 0.7 : 0),
-      },
-      {
-        behaviour: "sleeping",
-        strength:
-          this.fatigue * 0.9 +
-          (1 - this.energy) * 0.75 -
-          this.fear * 1.4 -
-          this.hunger * 0.25,
-      },
-      {
-        behaviour: "foraging",
-        strength:
-          (targetFood
-            ? this.hunger * this.hunger * (0.65 + targetFood.nutrition * 0.5) *
-              (1 - targetFood.heat * 0.82)
-            : 0) - this.fear * 0.75,
-      },
-      {
-        behaviour: "investigating",
-        strength: 0,
-      },
-      {
-        behaviour: "wandering",
-        strength: 0.38 + this.curiosity * 0.25 + this.satisfaction * 0.15,
-      },
-    ];
-
-    drives.sort((left, right) => right.strength - left.strength);
-    const winner = drives[0];
-    if (
-      winner.behaviour !== this.behaviour &&
-      (winner.strength > this.currentDrive + 0.1 || this.behaviourAge > 2.8)
-    ) {
-      this.switchBehaviour(winner.behaviour, winner.strength);
-    } else {
-      this.currentDrive +=
-        (winner.behaviour === this.behaviour ? winner.strength : this.currentDrive) *
-        exponentialApproach(2, dt) -
-        this.currentDrive * exponentialApproach(2, dt);
-    }
-
-    let direction: Vec2;
-    switch (this.behaviour) {
-      case "foraging": {
-        if (targetFood) {
-          this.targetFoodId = targetFood.id;
-          direction = normalize(subtract(centerOf(targetFood.rect), senses.head));
-        } else {
-          this.targetFoodId = null;
-          direction = this.wanderDirection(senses);
-        }
-        break;
-      }
-      case "investigating": {
-        this.targetFoodId = null;
-        direction = normalize(subtract(senses.pointer.position, senses.head));
-        break;
-      }
-      case "fleeing": {
-        this.targetFoodId = null;
-        const threat = this.lastThreatPosition ?? senses.pointer.position;
-        direction = normalize(subtract(senses.head, threat));
-        break;
-      }
-      case "sleeping": {
-        this.targetFoodId = null;
-        direction = { x: 1, y: 0 };
-        break;
-      }
-      default: {
-        this.targetFoodId = null;
-        direction = this.wanderDirection(senses);
+    if (this.hunger >= HUNGRY_THRESHOLD) {
+      const food = this.chooseFood(senses.foods, senses.head);
+      if (food) {
+        this.behaviour = "foraging";
+        this.targetFoodId = food.id;
+        this.roamTarget = null;
+        // Aim for the nearest point on the glyph range, not its centre. A long
+        // token or comment should be edible as soon as the mouth reaches any
+        // part of it; chasing its centre creates an unnecessary orbit.
+        const bitePoint = closestPointOnRect(senses.head, food.rect);
+        const foodDistance = distance(bitePoint, senses.head);
+        // Full cruise speed has a larger turning radius than the mouth. Slow
+        // only for the final approach so pure pursuit cannot orbit forever.
+        const approach = clamp((foodDistance - 20) / 140);
+        const approachSpeed = 18 + approach * 124;
+        return this.decision(
+          normalize(subtract(bitePoint, senses.head)),
+          approachSpeed
+        );
       }
     }
 
-    return this.decisionFor(senses, direction, winner.strength);
-  }
+    this.targetFoodId = null;
+    if (this.behaviour === "foraging" || this.behaviour === "chewing") {
+      this.beginRest();
+    }
 
-  startle(position: Vec2, strength: number, now: number) {
-    const repeatedQuickly = now - this.lastStimulusAt < 900;
-    this.habituation = clamp(
-      this.habituation + (repeatedQuickly ? 0.18 : -0.1)
+    if (this.behaviour === "resting") {
+      this.restRemaining -= deltaSeconds;
+      if (this.restRemaining > 0) return this.decision({ x: 1, y: 0 });
+      this.beginRoam(senses.bounds);
+    }
+
+    if (!this.roamTarget || !this.targetInside(this.roamTarget, senses.bounds)) {
+      this.beginRoam(senses.bounds);
+    }
+    const roamTarget = this.roamTarget;
+    if (!roamTarget) {
+      this.beginRest();
+      return this.decision({ x: 1, y: 0 });
+    }
+
+    if (distance(roamTarget, senses.head) <= ROAM_ARRIVAL_RADIUS) {
+      this.beginRest();
+      return this.decision({ x: 1, y: 0 });
+    }
+
+    this.behaviour = "wandering";
+    return this.decision(
+      normalize(subtract(roamTarget, senses.head), { x: 1, y: 0 })
     );
-    const effectiveStrength = strength * (1 - this.habituation * 0.72);
-    this.fear = clamp(this.fear + effectiveStrength * 0.8);
-    this.lastStimulusAt = now;
-    this.lastThreatPosition = { ...position };
   }
 
   onEat(nutrition: number) {
-    this.hunger = clamp(this.hunger - (0.32 + nutrition * 0.2));
-    this.energy = clamp(this.energy + 0.12 + nutrition * 0.08);
-    this.gut = clamp(this.gut + 0.42 + nutrition * 0.16);
-    this.satisfaction = 1;
+    this.hunger = clamp(this.hunger - (0.46 + nutrition * 0.18));
     this.targetFoodId = null;
-    this.switchBehaviour("wandering", 0.65);
+    this.beginRest();
   }
 
-  onPoop(amount = 0.48) {
-    this.gut = clamp(this.gut - amount);
-    this.curiosity = clamp(this.curiosity + 0.08);
+  onPoop() {
+    this.beginRest();
   }
 
   starve() {
     this.hunger = 0.98;
-    this.fatigue = Math.min(this.fatigue, 0.35);
-    this.fear = 0;
   }
 
   reset() {
     this.hunger = 0.67;
-    this.energy = 0.82;
-    this.fear = 0;
-    this.curiosity = 0.68;
-    this.fatigue = 0.12;
-    this.gut = 0;
     this.age = 0;
     this.behaviour = "hatching";
-    this.behaviourAge = 0;
-    this.currentDrive = 0;
     this.targetFoodId = null;
-    this.wanderTarget = null;
-    this.lastThreatPosition = null;
-    this.satisfaction = 0;
-    this.pointerArrived = false;
+    this.restRemaining = 0;
+    this.roamTarget = null;
+    this.pointerThreatened = false;
   }
 
   vitals(): CreatureVitals {
     return {
       behaviour: this.behaviour,
       hunger: this.hunger,
-      energy: this.energy,
-      fear: this.fear,
-      curiosity: this.curiosity,
-      fatigue: this.fatigue,
-      gut: this.gut,
     };
   }
 
-  private readStimulus(senses: BrainSenses) {
-    const stimulus = senses.stimulus;
-    if (!stimulus || stimulus.age > 0.16) return;
-    this.startle(
-      stimulus.position,
-      stimulus.strength * stimulus.surprise,
-      senses.now
-    );
+  private pointerIsThreatening(senses: BrainSenses) {
+    if (!senses.pointer.active) {
+      this.pointerThreatened = false;
+      return false;
+    }
+
+    const pointerDistance = distance(senses.pointer.position, senses.head);
+    if (this.pointerThreatened) {
+      if (pointerDistance > POINTER_SAFE_RADIUS) this.pointerThreatened = false;
+    } else if (pointerDistance < POINTER_DANGER_RADIUS) {
+      this.pointerThreatened = true;
+    }
+    return this.pointerThreatened;
   }
 
   private chooseFood(foods: EdibleCode[], head: Vec2) {
-    let best: EdibleCode | null = null;
-    let bestScore = -Infinity;
+    const current = foods.find((food) => food.id === this.targetFoodId);
+    if (current) return current;
 
+    let nearest: EdibleCode | null = null;
+    let nearestDistance = Infinity;
     for (const food of foods) {
-      const foodDistance = distance(centerOf(food.rect), head);
-      const persistenceBonus = food.id === this.targetFoodId ? 0.34 : 0;
-      const kindPreference =
-        food.kind === "comment" ? 0.18 : food.kind === "modifier" ? 0.1 : 0;
-      const score =
-        food.nutrition * 0.62 +
-        kindPreference +
-        persistenceBonus -
-        foodDistance / 680 -
-        food.heat * 0.88;
-      if (score > bestScore) {
-        best = food;
-        bestScore = score;
-      }
+      const foodDistance = distance(closestPointOnRect(head, food.rect), head);
+      if (foodDistance >= nearestDistance) continue;
+      nearest = food;
+      nearestDistance = foodDistance;
     }
-
-    return best;
+    return nearest;
   }
 
-  private wanderDirection(senses: BrainSenses) {
-    const targetExpired = senses.now >= this.wanderExpiresAt;
-    const closeToTarget =
-      this.wanderTarget !== null && distance(this.wanderTarget, senses.head) < 42;
-    if (!this.wanderTarget || targetExpired || closeToTarget) {
-      const margin = 54;
-      this.wanderTarget = {
-        x:
-          senses.bounds.x +
-          margin +
-          this.random.next() * Math.max(1, senses.bounds.width - margin * 2),
-        y:
-          senses.bounds.y +
-          margin +
-          this.random.next() * Math.max(1, senses.bounds.height - margin * 2),
-      };
-      this.wanderExpiresAt = senses.now + this.random.between(2_000, 5_200);
-    }
-    const drift = {
-      x: this.random.signed() * 0.07,
-      y: this.random.signed() * 0.07,
+  private beginRest() {
+    this.behaviour = "resting";
+    this.restRemaining = this.random.between(
+      REST_SECONDS_MIN,
+      REST_SECONDS_MAX
+    );
+    this.roamTarget = null;
+  }
+
+  private beginRoam(bounds: Rect) {
+    const margin = Math.max(
+      24,
+      Math.min(78, bounds.width * 0.2, bounds.height * 0.2)
+    );
+    const availableWidth = Math.max(1, bounds.width - margin * 2);
+    const availableHeight = Math.max(1, bounds.height - margin * 2);
+    this.roamTarget = {
+      x: bounds.x + margin + this.random.next() * availableWidth,
+      y: bounds.y + margin + this.random.next() * availableHeight,
     };
-    return normalize(add(subtract(this.wanderTarget, senses.head), scale(drift, 80)));
+    this.behaviour = "wandering";
   }
 
-  private decisionFor(
-    senses: BrainSenses,
-    direction: Vec2,
-    drive: number
-  ): BrainDecision {
-    const fearBoost = this.fear * 170;
+  private targetInside(target: Vec2, bounds: Rect) {
+    return (
+      target.x >= bounds.x &&
+      target.x <= bounds.x + bounds.width &&
+      target.y >= bounds.y &&
+      target.y <= bounds.y + bounds.height
+    );
+  }
+
+  private decision(direction: Vec2, speedOverride?: number): BrainDecision {
     const speedByBehaviour: Record<Behaviour, number> = {
       hatching: 0,
+      resting: 0,
       wandering: 110,
-      investigating: 130,
       foraging: 142,
       chewing: 18,
-      fleeing: 235,
-      sleeping: 0,
+      toileting: 122,
+      fleeing: 310,
     };
-    const speed = speedByBehaviour[this.behaviour] + fearBoost;
-    const sleep = this.behaviour === "sleeping" ? 1 : 0;
-    const gaitHz =
-      this.behaviour === "fleeing"
-        ? 7
-        : this.behaviour === "foraging"
-          ? 5.2
-          : this.behaviour === "chewing"
-            ? 6
-            : 3.8 + this.energy * 1.2;
-
-    this.currentDrive +=
-      (drive - this.currentDrive) * exponentialApproach(3, senses.deltaSeconds);
+    const gaitByBehaviour: Record<Behaviour, number> = {
+      hatching: 0.7,
+      resting: 0.7,
+      wandering: 4.2,
+      foraging: 5.2,
+      chewing: 6,
+      toileting: 4.4,
+      fleeing: 8.5,
+    };
 
     return {
       behaviour: this.behaviour,
       targetFoodId: this.targetFoodId,
       control: {
         direction,
-        speed,
-        gaitHz,
+        speed: speedOverride ?? speedByBehaviour[this.behaviour],
+        gaitHz: gaitByBehaviour[this.behaviour],
         wriggle:
-          this.behaviour === "sleeping"
+          this.behaviour === "resting"
             ? 0.08
-            : 0.55 + this.fear * 1.8 + this.satisfaction * 0.35,
-        sleep,
-        fear: this.fear,
-        gut: this.gut,
+            : this.behaviour === "fleeing"
+              ? 1.45
+              : 0.55,
+        sleep: this.behaviour === "resting" ? 1 : 0,
+        fear: this.behaviour === "fleeing" ? 1 : 0,
+        gut: 0,
+        chew: 0,
+        poop: 0,
+        // Code can live inside the ordinary 72 px edge buffer. During a bite
+        // approach, direct pursuit wins over that soft buffer; the body's hard
+        // boundary reflection still prevents it leaving the document.
+        edgeAvoidance:
+          this.behaviour === "foraging" || this.behaviour === "chewing"
+            ? 0
+            : 1,
       },
     };
-  }
-
-  private switchBehaviour(behaviour: Behaviour, drive: number) {
-    if (behaviour === this.behaviour) return;
-    this.behaviour = behaviour;
-    this.behaviourAge = 0;
-    this.currentDrive = drive;
   }
 }

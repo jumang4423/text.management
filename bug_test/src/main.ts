@@ -5,7 +5,6 @@ import { EditorView } from "@codemirror/view";
 
 import { CodeMirrorHabitat } from "./adapters/codemirrorHabitat";
 import { BugWorld, type BugWorldMetrics } from "./bug/world";
-import type { CreatureMode } from "./bug/types";
 import { demoCode } from "./demoCode";
 import "./style.css";
 
@@ -50,7 +49,7 @@ app.innerHTML = `
         <span>living code habitat</span>
       </div>
     </div>
-    <p>slow pointer = curiosity · fast pointer = fear · click poop = restore</p>
+    <p>rest → roam → rest · hungry = eat · nearby pointer = flee</p>
   </header>
   <main class="workspace">
     <section class="habitat-shell" aria-label="Code habitat">
@@ -72,41 +71,17 @@ app.innerHTML = `
     <aside class="lab-panel">
       <div class="panel-heading">
         <span>FIELD NOTES</span>
-        <span id="mode-label">NIBBLE</span>
+        <span>HUNGER ONLY</span>
       </div>
       <div class="vitals" id="vitals"></div>
       <div class="controls">
         <button id="starve" type="button"><span>01</span> MAKE HUNGRY</button>
-        <button id="pulse" type="button"><span>02</span> SOUND PULSE</button>
-        <button id="undo" type="button"><span>03</span> UNDO BITE</button>
-        <button id="reset" type="button"><span>04</span> NEW EGG</button>
+        <button id="undo" type="button"><span>02</span> UNDO BITE</button>
+        <button id="reset" type="button"><span>03</span> NEW EGG</button>
       </div>
-      <fieldset>
-        <legend>BEHAVIOUR</legend>
-        <label>
-          <input type="radio" name="mode" value="nibble" checked />
-          <span>NIBBLE</span>
-          edits safe food units
-        </label>
-        <label>
-          <input type="radio" name="mode" value="pet" />
-          <span>PET</span>
-          chews visually only
-        </label>
-        <label>
-          <input id="auto-pulse" type="checkbox" />
-          <span>AUTO SOUND</span>
-          emits habitat heat
-        </label>
-        <label>
-          <input id="show-scent" type="checkbox" checked />
-          <span>SHOW SCENT</span>
-          debug target tether
-        </label>
-      </fieldset>
       <div class="biology-note">
-        <strong>1 BUG · 4 × 2 RIG</strong>
-        <p>One gait personality. The head records its route; four rear discs follow that path with increasing delay to form a visible shallow arc.</p>
+        <strong>SIMPLE LIFE LOOP</strong>
+        <p>Rest for 2–8 seconds, walk to one random visible point, then rest again. Hunger redirects the bug to code; a nearby pointer interrupts everything and makes it flee.</p>
       </div>
     </aside>
   </main>
@@ -172,18 +147,21 @@ const world = new BugWorld(habitat, canvas);
 world.onMetrics = updateMetrics;
 world.start();
 
-window.addEventListener("pointermove", (event) => {
+stage.addEventListener("pointermove", (event) => {
   const rect = stage.getBoundingClientRect();
   world.pointerMove({ x: event.clientX - rect.left, y: event.clientY - rect.top }, event.timeStamp);
 });
+stage.addEventListener("pointerleave", () => world.pointerLeave());
 stage.addEventListener(
   "pointerdown",
   (event) => {
     const rect = stage.getBoundingClientRect();
-    const handled = world.pointerDown({
+    const stagePoint = {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
-    });
+    };
+    world.pointerMove(stagePoint, event.timeStamp);
+    const handled = world.pointerDown(stagePoint);
     if (handled) {
       event.preventDefault();
       event.stopPropagation();
@@ -193,50 +171,16 @@ stage.addEventListener(
 );
 
 requiredElement<HTMLButtonElement>("#starve").addEventListener("click", () => world.starve());
-requiredElement<HTMLButtonElement>("#pulse").addEventListener("click", () => world.soundPulse());
 requiredElement<HTMLButtonElement>("#undo").addEventListener("click", () => habitat.undoLastBite());
 requiredElement<HTMLButtonElement>("#reset").addEventListener("click", () => world.reset());
-requiredElement<HTMLInputElement>("#auto-pulse").addEventListener("change", (event) => {
-  world.autoPulse = (event.currentTarget as HTMLInputElement).checked;
-});
-requiredElement<HTMLInputElement>("#show-scent").addEventListener("change", (event) => {
-  world.showScent = (event.currentTarget as HTMLInputElement).checked;
-});
-
-for (const input of document.querySelectorAll<HTMLInputElement>('input[name="mode"]')) {
-  input.addEventListener("change", () => {
-    if (!input.checked) return;
-    world.mode = input.value as CreatureMode;
-    requiredElement("#mode-label").textContent = world.mode.toUpperCase();
-  });
-}
-
-window.addEventListener("keydown", (event) => {
-  if (event.altKey && event.key.toLowerCase() === "b") {
-    event.preventDefault();
-    world.soundPulse();
-  }
-});
 
 function updateMetrics(metrics: BugWorldMetrics) {
-  const labels: Array<[string, number, string]> = [
-    ["HUNGER", metrics.hunger, "#ff8c00"],
-    ["ENERGY", metrics.energy, "#008000"],
-    ["FEAR", metrics.fear, "#e13825"],
-    ["CURIOSITY", metrics.curiosity, "#6ed4e3"],
-    ["FATIGUE", metrics.fatigue, "#94a1ff"],
-    ["GUT", metrics.gut, "#6b3c1d"],
-  ];
-  requiredElement("#vitals").innerHTML = labels
-    .map(
-      ([label, value, color]) => `
-        <div class="vital-row">
-          <span>${label}</span>
-          <div><i style="width:${Math.round(value * 100)}%;background:${color}"></i></div>
-          <output>${value.toFixed(2)}</output>
-        </div>`
-    )
-    .join("");
+  requiredElement("#vitals").innerHTML = `
+    <div class="vital-row">
+      <span>HUNGER</span>
+      <div><i style="width:${Math.round(metrics.hunger * 100)}%;background:#ff8c00"></i></div>
+      <output>${metrics.hunger.toFixed(2)}</output>
+    </div>`;
   requiredElement("#status-behaviour").textContent = metrics.behaviour.toUpperCase();
   requiredElement("#status-target").textContent = metrics.target
     ? `smells: ${metrics.target}`

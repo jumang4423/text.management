@@ -4,12 +4,12 @@ export type FoodKind = "mini" | "modifier" | "comment";
 export type CreatureMode = "pet" | "nibble";
 export type Behaviour =
   | "hatching"
+  | "resting"
   | "wandering"
-  | "investigating"
   | "foraging"
   | "chewing"
-  | "fleeing"
-  | "sleeping";
+  | "toileting"
+  | "fleeing";
 
 export interface EdibleCode {
   id: string;
@@ -46,6 +46,7 @@ export interface HabitatSnapshot {
 export interface HabitatAdapter {
   snapshot(now: number): HabitatSnapshot;
   stageToWorld(point: Vec2): Vec2;
+  setChewing(edible: EdibleCode | null): void;
   eat(edible: EdibleCode): EatenMatter | null;
   restore(matter: EatenMatter): void;
   pulseRandom(now: number): { position: Vec2; strength: number } | null;
@@ -59,13 +60,6 @@ export interface PointerSense {
   active: boolean;
 }
 
-export interface SoundStimulus {
-  position: Vec2;
-  strength: number;
-  surprise: number;
-  age: number;
-}
-
 export interface BodyControl {
   direction: Vec2;
   speed: number;
@@ -74,6 +68,10 @@ export interface BodyControl {
   sleep: number;
   fear: number;
   gut: number;
+  chew: number;
+  poop: number;
+  /** Strength of the wide, anticipatory edge steering. Hard bounds remain on. */
+  edgeAvoidance: number;
 }
 
 export interface BrainSenses {
@@ -83,8 +81,8 @@ export interface BrainSenses {
   bounds: Rect;
   pointer: PointerSense;
   foods: EdibleCode[];
-  stimulus: SoundStimulus | null;
   chewing: boolean;
+  toiletTarget: Vec2 | null;
 }
 
 export interface BrainDecision {
@@ -96,9 +94,4 @@ export interface BrainDecision {
 export interface CreatureVitals {
   behaviour: Behaviour;
   hunger: number;
-  energy: number;
-  fear: number;
-  curiosity: number;
-  fatigue: number;
-  gut: number;
 }

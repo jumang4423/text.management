@@ -4,6 +4,7 @@ import {
   add,
   centerOf,
   clamp,
+  closestPointOnRect,
   distance,
   normalize,
   Random,
@@ -15,7 +16,6 @@ import {
 import {
   BugRenderer,
   droppingAtPoint,
-  type CodeParticle,
   type Dropping,
   type SoundPulseVisual,
 } from "./renderer";
@@ -29,7 +29,6 @@ import type {
   HabitatAdapter,
   HabitatSnapshot,
   PointerSense,
-  SoundStimulus,
 } from "./types";
 
 interface StomachItem {
@@ -40,7 +39,13 @@ interface StomachItem {
 interface ChewState {
   foodId: string;
   elapsed: number;
-  lastCrumbAt: number;
+}
+
+interface PoopMission {
+  matter: EatenMatter;
+  target: Vec2;
+  arrivedFor: number;
+  settled: boolean;
 }
 
 const LOCOMOTION_TIME_SCALE = 5;
@@ -48,11 +53,14 @@ const TEST_BUG_COUNT = 1;
 const POINTER_CRUISE_SPEED = 130;
 const POINTER_ARRIVAL_RADIUS = 72;
 const POINTER_RESUME_RADIUS = 96;
+const POINTER_ANGER_RADIUS = 180;
+const ANGER_BUBBLE_HOLD_MS = 2_000;
+const TOILET_ARRIVAL_RADIUS = 52;
+const POOP_MIN_SPACING = 96;
+const POOP_ANIMATION_SECONDS = 1.15;
 
 export interface BugWorldMetrics extends CreatureVitals {
-  mode: CreatureMode;
   foodCount: number;
-  poopCount: number;
   target: string | null;
 }
 
@@ -68,7 +76,6 @@ export class BugWorld {
   onMetrics: ((metrics: BugWorldMetrics) => void) | null = null;
 
   private readonly random = new Random(0xb0611fe);
-  private readonly particles: CodeParticle[] = [];
   private readonly droppings: Dropping[] = [];
   private readonly pulses: SoundPulseVisual[] = [];
   private readonly stomach: StomachItem[] = [];
@@ -83,8 +90,6 @@ export class BugWorld {
     speed: 0,
     active: false,
   };
-  private latestStimulus: SoundStimulus | null = null;
-  private stimulusPending = false;
   private chew: ChewState | null = null;
   private animationFrame = 0;
   private lastFrameAt = performance.now();
@@ -94,6 +99,12 @@ export class BugWorld {
   private lastAutoPulseAt = 0;
   private lastPointerAt = performance.now();
   private lastMetricsAt = 0;
+  private forageFoodId: string | null = null;
+  private forageBestDistance = Infinity;
+  private forageStalledFor = 0;
+  private hoveredDroppingId: string | null = null;
+  private poopMission: PoopMission | null = null;
+  private angerBubbleUntil = 0;
 
   constructor(
     private readonly habitat: HabitatAdapter,
@@ -118,6 +129,7 @@ export class BugWorld {
   destroy() {
     cancelAnimationFrame(this.animationFrame);
     this.animationFrame = 0;
+    this.stopChewing();
   }
 
   reset() {
@@ -127,14 +139,15 @@ export class BugWorld {
       body.reset(this.spawnPosition(this.snapshot, index));
     }
     this.swarmArrived.fill(false);
-    this.particles.length = 0;
     this.droppings.length = 0;
+    this.hoveredDroppingId = null;
+    this.angerBubbleUntil = 0;
     this.pulses.length = 0;
     this.stomach.length = 0;
-    this.chew = null;
+    this.poopMission = null;
+    this.stopChewing();
+    this.resetForageProgress();
     this.simulationAge = 0;
-    this.latestStimulus = null;
-    this.stimulusPending = false;
   }
 
   starve() {
@@ -145,13 +158,6 @@ export class BugWorld {
     const now = performance.now();
     const pulse = this.habitat.pulseRandom(now);
     if (!pulse) return;
-    this.latestStimulus = {
-      position: pulse.position,
-      strength: pulse.strength,
-      surprise: 0.75 + this.random.next() * 0.25,
-      age: 0,
-    };
-    this.stimulusPending = true;
     this.pulses.push({ ...pulse, age: 0 });
     for (const body of this.bodies) {
       body.impulse(pulse.position, pulse.strength * 10);
@@ -168,12 +174,23 @@ export class BugWorld {
       speed: Math.min(1_200, Math.hypot(velocity.x, velocity.y)),
       active: true,
     };
+    if (distance(worldPosition, this.body.head) < POINTER_ANGER_RADIUS) {
+      this.angerBubbleUntil = Math.max(
+        this.angerBubbleUntil,
+        timestamp + ANGER_BUBBLE_HOLD_MS
+      );
+    }
+    this.updateDroppingHover();
     this.lastPointerAt = timestamp;
   }
 
   pointerLeave() {
-    // Pointer-follow test mode deliberately keeps chasing the last known point.
-    this.pointer.speed = 0;
+    this.pointer = {
+      ...this.pointer,
+      speed: 0,
+      active: false,
+    };
+    this.hoveredDroppingId = null;
   }
 
   pointerDown(stagePosition: Vec2) {
@@ -181,8 +198,8 @@ export class BugWorld {
     const dropping = droppingAtPoint(this.droppings, worldPosition);
     if (dropping?.matter) {
       this.habitat.restore(dropping.matter);
-      this.spawnBurst(dropping.position, dropping.matter.text, "#6ed4e3", 14);
       this.droppings.splice(this.droppings.indexOf(dropping), 1);
+      this.hoveredDroppingId = null;
       return true;
     }
 
@@ -190,7 +207,10 @@ export class BugWorld {
       (body) => distance(worldPosition, body.head) < 34
     );
     if (touchedBody) {
-      this.brain.startle(worldPosition, 0.82, performance.now());
+      this.angerBubbleUntil = Math.max(
+        this.angerBubbleUntil,
+        performance.now() + ANGER_BUBBLE_HOLD_MS
+      );
       touchedBody.impulse(worldPosition, 16);
       return true;
     }
@@ -202,9 +222,7 @@ export class BugWorld {
     const target = this.targetFood();
     return {
       ...vitals,
-      mode: this.mode,
       foodCount: this.snapshot.edibles.length,
-      poopCount: this.droppings.length,
       target: target?.text.trim() ?? null,
     };
   }
@@ -230,10 +248,21 @@ export class BugWorld {
       snapshot: this.snapshot,
       targetFood: this.showScent ? this.targetFood() : null,
       chewAmount: this.chew ? clamp(this.chew.elapsed / 1.28) : 0,
-      particles: this.particles,
+      faceBubble:
+        now < this.angerBubbleUntil
+          ? "💢"
+          : this.chew
+            ? "🎵"
+            : this.poopMission?.settled
+              ? "💨"
+              : null,
       droppings: this.droppings,
+      hoveredDropping:
+        this.droppings.find(
+          (dropping) => dropping.id === this.hoveredDroppingId
+        ) ?? null,
       pulses: this.pulses,
-      hatching: this.pointer.active ? 1 : clamp(this.simulationAge / 0.65),
+      hatching: clamp(this.simulationAge / 0.65),
       now,
       interpolation,
     });
@@ -268,38 +297,62 @@ export class BugWorld {
       width: Math.max(180, this.snapshot.worldWidth),
       height: Math.max(180, this.snapshot.worldHeight),
     };
-    const stimulus = this.stimulusPending ? this.latestStimulus : null;
-    if (this.pointer.active) this.chew = null;
+    const visibleBounds: Rect = {
+      x: this.snapshot.scrollX,
+      y: this.snapshot.scrollY,
+      width: Math.max(180, this.snapshot.viewportWidth),
+      height: Math.max(180, this.snapshot.viewportHeight),
+    };
     const decision = this.brain.update({
       now,
       deltaSeconds,
       head: this.body.head,
-      bounds: worldBounds,
+      bounds: visibleBounds,
       pointer: this.pointer,
       foods: this.snapshot.edibles,
-      stimulus,
       chewing: this.chew !== null,
+      toiletTarget: this.poopMission?.target ?? null,
     });
-    this.stimulusPending = false;
 
-    if (!this.pointer.active) this.updateChewing(deltaSeconds, decision);
+    if (decision.behaviour === "fleeing") {
+      this.angerBubbleUntil = Math.max(
+        this.angerBubbleUntil,
+        now + ANGER_BUBBLE_HOLD_MS
+      );
+      this.stopChewing();
+      this.resetForageProgress();
+      if (this.poopMission?.settled) {
+        this.poopMission.target = this.chooseToiletTarget();
+        this.poopMission.arrivedFor = 0;
+        this.poopMission.settled = false;
+      }
+    }
+    else this.updateChewing(deltaSeconds, decision);
     const control = { ...decision.control };
-    if (this.chew && !this.pointer.active) {
+    if (this.chew && decision.behaviour !== "fleeing") {
       const target = this.targetFood();
       if (target) {
         control.direction = normalize(subtract(centerOf(target.rect), this.body.head));
       }
-      control.speed = 3;
+      control.speed = 0;
       control.gaitHz = 2.8;
-      control.wriggle = 0.85;
+      control.wriggle = 0.9;
+      control.chew = 1;
+    }
+    if (this.poopMission?.settled && decision.behaviour === "toileting") {
+      control.speed = 0;
+      control.gaitHz = 0.7;
+      control.wriggle = 1.1;
+      control.sleep = 0;
+      control.poop = 1;
     }
     control.gut = clamp(
-      this.brain.gut +
-        this.stomach.reduce((sum, item) => sum + item.matter.nutrition * 0.16, 0)
+      this.stomach.reduce(
+        (sum, item) => sum + item.matter.nutrition * 0.16,
+        0
+      )
     );
-    const growth = this.pointer.active
-      ? 1
-      : Math.min(1, this.simulationAge / 0.65);
+    const growth = Math.min(1, this.simulationAge / 0.65);
     // Ten bodies share the document but own independent joints, contacts and
     // seeded gait variation. Only the primary body owns eating/metabolism.
     for (const [index, body] of this.bodies.entries()) {
@@ -317,36 +370,55 @@ export class BugWorld {
       }
     }
 
-    this.updateDigestion(deltaSeconds);
-    this.updateParticles(deltaSeconds);
-    this.updateDroppings(deltaSeconds, worldBounds);
+    this.updateDigestion(deltaSeconds, decision.behaviour);
+    this.updateDroppings(deltaSeconds);
+    this.updateDroppingHover();
     this.updatePulses(deltaSeconds);
-    if (this.latestStimulus) this.latestStimulus.age += deltaSeconds;
     this.pointer.speed *= Math.pow(0.7, deltaSeconds * 60);
   }
 
   private updateChewing(deltaSeconds: number, decision: BrainDecision) {
     const target = this.targetFood(decision.targetFoodId);
     if (!this.chew && decision.behaviour === "foraging" && target) {
-      const mouthDistance = distance(this.body.head, centerOf(target.rect));
-      if (mouthDistance < Math.max(25, target.rect.width * 0.15)) {
-        this.chew = { foodId: target.id, elapsed: 0, lastCrumbAt: -1 };
+      const bitePoint = closestPointOnRect(this.body.head, target.rect);
+      const mouthDistance = distance(this.body.head, bitePoint);
+
+      if (this.forageFoodId !== target.id) {
+        this.forageFoodId = target.id;
+        this.forageBestDistance = mouthDistance;
+        this.forageStalledFor = 0;
+      } else if (mouthDistance < this.forageBestDistance - 1.5) {
+        this.forageBestDistance = mouthDistance;
+        this.forageStalledFor = 0;
+      } else {
+        this.forageStalledFor += deltaSeconds;
       }
+
+      // The ordinary trigger is geometric distance to the code rectangle. The
+      // second trigger is a narrow deadlock guard: if the mouth has spent over
+      // a second circling within one body length, finish the already-visible
+      // approach instead of allowing an endless one-sided turn.
+      const reachedFood = mouthDistance < 42;
+      const stalledBesideFood =
+        mouthDistance < 68 && this.forageStalledFor > 1.25;
+      if (reachedFood || stalledBesideFood) {
+        this.chew = { foodId: target.id, elapsed: 0 };
+        this.habitat.setChewing(target);
+        this.resetForageProgress();
+      }
+    } else if (!this.chew) {
+      this.resetForageProgress();
     }
 
     if (!this.chew) return;
     const chewingFood = this.targetFood(this.chew.foodId);
     if (!chewingFood) {
-      this.chew = null;
+      this.stopChewing();
+      this.resetForageProgress();
       return;
     }
 
     this.chew.elapsed += deltaSeconds;
-    const biteIndex = Math.floor(this.chew.elapsed / 0.23);
-    if (biteIndex > this.chew.lastCrumbAt) {
-      this.chew.lastCrumbAt = biteIndex;
-      this.spawnCrumb(chewingFood);
-    }
 
     if (this.chew.elapsed < 1.28) return;
     let matter: EatenMatter | null = null;
@@ -357,109 +429,169 @@ export class BugWorld {
         remaining: 4.2 + this.random.between(0, 2.4),
       });
       this.brain.onEat(matter.nutrition);
-      this.spawnBurst(this.body.head, matter.text, "#008000", 11);
       this.snapshotAge = 1;
     } else {
       this.brain.onEat(chewingFood.nutrition * 0.42);
     }
-    this.chew = null;
+    this.stopChewing();
   }
 
-  private updateDigestion(deltaSeconds: number) {
-    for (let index = this.stomach.length - 1; index >= 0; index -= 1) {
+  private stopChewing() {
+    this.chew = null;
+    this.habitat.setChewing(null);
+  }
+
+  private resetForageProgress() {
+    this.forageFoodId = null;
+    this.forageBestDistance = Infinity;
+    this.forageStalledFor = 0;
+  }
+
+  private updateDigestion(
+    deltaSeconds: number,
+    behaviour: BrainDecision["behaviour"]
+  ) {
+    for (let index = 0; index < this.stomach.length; index += 1) {
       const item = this.stomach[index];
       item.remaining -= deltaSeconds;
-      if (item.remaining > 0) continue;
-      const tailDirection = normalize(
-        subtract(this.body.tail, this.body.nodes[this.body.nodes.length - 2].position),
-        { x: -1, y: 0 }
-      );
-      const position = add(this.body.tail, scale(tailDirection, 14));
-      this.droppings.push({
-        id: item.matter.id,
-        position,
-        velocity: {
-          x: tailDirection.x * 18 + this.random.signed() * 5,
-          y: 18 + this.random.between(0, 8),
-        },
-        matter: item.matter,
-        age: 0,
-      });
-      this.brain.onPoop(0.45 + item.matter.nutrition * 0.12);
-      this.stomach.splice(index, 1);
     }
-  }
 
-  private updateParticles(deltaSeconds: number) {
-    for (let index = this.particles.length - 1; index >= 0; index -= 1) {
-      const particle = this.particles[index];
-      particle.age += deltaSeconds;
-      if (particle.age >= particle.lifetime) {
-        this.particles.splice(index, 1);
-        continue;
+    if (!this.poopMission && !this.chew) {
+      const readyIndex = this.stomach.findIndex((item) => item.remaining <= 0);
+      if (readyIndex >= 0) {
+        const [ready] = this.stomach.splice(readyIndex, 1);
+        this.poopMission = {
+          matter: ready.matter,
+          target: this.chooseToiletTarget(),
+          arrivedFor: 0,
+          settled: false,
+        };
       }
-      particle.velocity.y += 34 * deltaSeconds;
-      particle.position = add(particle.position, scale(particle.velocity, deltaSeconds));
-      particle.velocity = scale(particle.velocity, Math.pow(0.985, deltaSeconds * 60));
     }
+
+    const mission = this.poopMission;
+    if (!mission || behaviour !== "toileting") return;
+    if (!mission.settled) {
+      const targetDistance = distance(this.body.head, mission.target);
+      if (targetDistance > TOILET_ARRIVAL_RADIUS) return;
+      mission.settled = true;
+      mission.arrivedFor = 0;
+    }
+
+    mission.arrivedFor += deltaSeconds;
+    if (mission.arrivedFor < POOP_ANIMATION_SECONDS) return;
+    const placement = this.tailPoopPlacement();
+    if (!this.poopSpotIsClear(placement.position)) {
+      mission.target = this.chooseToiletTarget();
+      mission.arrivedFor = 0;
+      mission.settled = false;
+      return;
+    }
+
+    this.droppings.push({
+      id: mission.matter.id,
+      ...placement,
+      matter: mission.matter,
+      age: 0,
+      size: this.random.between(30, 38),
+      rotation: this.random.between(-0.18, 0.18),
+    });
+    this.poopMission = null;
+    this.brain.onPoop();
   }
 
-  private updateDroppings(deltaSeconds: number, bounds: Rect) {
+  private chooseToiletTarget(): Vec2 {
+    const horizontalMargin = Math.min(
+      130,
+      Math.max(54, this.snapshot.viewportWidth * 0.18)
+    );
+    const verticalMargin = Math.min(
+      110,
+      Math.max(54, this.snapshot.viewportHeight * 0.18)
+    );
+    const availableWidth = Math.max(
+      1,
+      this.snapshot.viewportWidth - horizontalMargin * 2
+    );
+    const availableHeight = Math.max(
+      1,
+      this.snapshot.viewportHeight - verticalMargin * 2
+    );
+    let best = { ...this.body.head };
+    let bestScore = -Infinity;
+
+    for (let index = 0; index < 36; index += 1) {
+      const candidate = {
+        x:
+          this.snapshot.scrollX +
+          horizontalMargin +
+          this.random.next() * availableWidth,
+        y:
+          this.snapshot.scrollY +
+          verticalMargin +
+          this.random.next() * availableHeight,
+      };
+      const route = normalize(
+        subtract(candidate, this.body.head),
+        this.body.travelDirection
+      );
+      const predictedTailDistance =
+        this.body.segmentLength * (this.body.nodes.length - 1) * 0.76 + 32;
+      const predictedPoop = subtract(
+        candidate,
+        scale(route, predictedTailDistance)
+      );
+      const nearestPoop = this.droppings.reduce(
+        (nearest, dropping) =>
+          Math.min(nearest, distance(predictedPoop, dropping.position)),
+        Math.hypot(this.snapshot.viewportWidth, this.snapshot.viewportHeight)
+      );
+      const travelDistance = distance(candidate, this.body.head);
+      const score = nearestPoop + Math.min(280, travelDistance) * 0.18;
+      if (score <= bestScore) continue;
+      best = candidate;
+      bestScore = score;
+    }
+    return best;
+  }
+
+  private tailPoopPlacement() {
+    const tailIndex = this.body.nodes.length - 1;
+    const tail = this.body.renderNodeAt(tailIndex, 1);
+    const previous = this.body.renderNodeAt(Math.max(0, tailIndex - 1), 1);
+    const outward = normalize(subtract(tail, previous), { x: -1, y: 0 });
+    const tailRadius = this.body.radiusAt(tailIndex);
+    return {
+      origin: add(tail, scale(outward, tailRadius * 0.55)),
+      position: add(tail, scale(outward, tailRadius + 20)),
+    };
+  }
+
+  private poopSpotIsClear(position: Vec2) {
+    return this.droppings.every(
+      (dropping) => distance(position, dropping.position) >= POOP_MIN_SPACING
+    );
+  }
+
+  private updateDroppings(deltaSeconds: number) {
     for (const dropping of this.droppings) {
       dropping.age += deltaSeconds;
-      dropping.velocity.y += 38 * deltaSeconds;
-      dropping.position = add(dropping.position, scale(dropping.velocity, deltaSeconds));
-      dropping.velocity = scale(dropping.velocity, Math.pow(0.91, deltaSeconds * 60));
-      const floor = bounds.y + bounds.height - 24;
-      if (dropping.position.y > floor) {
-        dropping.position.y = floor;
-        dropping.velocity.y *= -0.15;
-      }
-      dropping.position.x = clamp(dropping.position.x, 20, bounds.width - 20);
     }
+  }
+
+  private updateDroppingHover() {
+    if (!this.pointer.active) {
+      this.hoveredDroppingId = null;
+      return;
+    }
+    this.hoveredDroppingId =
+      droppingAtPoint(this.droppings, this.pointer.position)?.id ?? null;
   }
 
   private updatePulses(deltaSeconds: number) {
     for (let index = this.pulses.length - 1; index >= 0; index -= 1) {
       this.pulses[index].age += deltaSeconds;
       if (this.pulses[index].age > 0.82) this.pulses.splice(index, 1);
-    }
-  }
-
-  private spawnCrumb(food: EdibleCode) {
-    const source = centerOf(food.rect);
-    const glyphs = [...food.text.trim()];
-    const glyph = glyphs.length > 0 ? this.random.pick(glyphs) : ".";
-    const towardHead = normalize(subtract(this.body.head, source));
-    this.particles.push({
-      position: {
-        x: source.x + this.random.signed() * food.rect.width * 0.28,
-        y: source.y + this.random.signed() * 5,
-      },
-      velocity: add(scale(towardHead, 42), {
-        x: this.random.signed() * 14,
-        y: this.random.between(-22, -8),
-      }),
-      age: 0,
-      lifetime: 0.72,
-      glyph,
-      color: food.kind === "comment" ? "#6b746a" : "#008000",
-    });
-  }
-
-  private spawnBurst(position: Vec2, text: string, color: string, count: number) {
-    const glyphs = [...text.trim()];
-    for (let index = 0; index < count; index += 1) {
-      const angle = this.random.between(0, Math.PI * 2);
-      const speed = this.random.between(18, 72);
-      this.particles.push({
-        position: { ...position },
-        velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed - 12 },
-        age: 0,
-        lifetime: this.random.between(0.5, 1.1),
-        glyph: glyphs.length > 0 ? this.random.pick(glyphs) : ".",
-        color,
-      });
     }
   }
 

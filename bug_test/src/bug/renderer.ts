@@ -18,8 +18,12 @@ import bugFaceUrl from "../assets/bug-face.png";
 // Keep landing targets in the simulation, but hide their + debug glyphs.
 // Flip this during gait tuning without changing any locomotion state.
 const DEBUG_SHOW_LANDING_TARGETS = false;
+const SHOW_FOOD_ROUTE = false;
+const SHOW_LOCOMOTION_GUIDE = false;
 const CREATURE_PIXEL_SCALE = 1 / 3;
 const CREATURE_ALPHA_THRESHOLD = 72;
+const MESSAGE_PIXEL_SCALE = 1 / 3;
+const MESSAGE_ALPHA_THRESHOLD = 88;
 
 interface CreatureBounds {
   x: number;
@@ -89,21 +93,102 @@ function hardenCreaturePixels(
   context.putImageData(image, 0, 0);
 }
 
-export interface CodeParticle {
-  position: Vec2;
-  velocity: Vec2;
-  age: number;
-  lifetime: number;
-  glyph: string;
-  color: string;
+function hardenMessagePixels(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number
+) {
+  const image = context.getImageData(0, 0, width, height);
+  const { data } = image;
+  for (let index = 0; index < data.length; index += 4) {
+    if (data[index + 3] < MESSAGE_ALPHA_THRESHOLD) {
+      data[index + 3] = 0;
+      continue;
+    }
+    data[index] = Math.round(data[index] / 51) * 51;
+    data[index + 1] = Math.round(data[index + 1] / 51) * 51;
+    data[index + 2] = Math.round(data[index + 2] / 51) * 51;
+    data[index + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+}
+
+function traceMessageCloud(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  context.beginPath();
+  context.moveTo(x + width * 0.17, y + height * 0.78);
+  context.bezierCurveTo(
+    x - width * 0.02,
+    y + height * 0.75,
+    x - width * 0.01,
+    y + height * 0.48,
+    x + width * 0.16,
+    y + height * 0.46
+  );
+  context.bezierCurveTo(
+    x + width * 0.08,
+    y + height * 0.24,
+    x + width * 0.31,
+    y + height * 0.1,
+    x + width * 0.43,
+    y + height * 0.27
+  );
+  context.bezierCurveTo(
+    x + width * 0.5,
+    y - height * 0.03,
+    x + width * 0.79,
+    y + height * 0.01,
+    x + width * 0.78,
+    y + height * 0.29
+  );
+  context.bezierCurveTo(
+    x + width * 1.02,
+    y + height * 0.21,
+    x + width * 1.08,
+    y + height * 0.54,
+    x + width * 0.9,
+    y + height * 0.63
+  );
+  context.bezierCurveTo(
+    x + width * 1.02,
+    y + height * 0.86,
+    x + width * 0.75,
+    y + height * 1.01,
+    x + width * 0.65,
+    y + height * 0.84
+  );
+  context.bezierCurveTo(
+    x + width * 0.51,
+    y + height * 1.04,
+    x + width * 0.29,
+    y + height * 0.99,
+    x + width * 0.29,
+    y + height * 0.82
+  );
+  context.bezierCurveTo(
+    x + width * 0.23,
+    y + height * 0.93,
+    x + width * 0.09,
+    y + height * 0.91,
+    x + width * 0.17,
+    y + height * 0.78
+  );
+  context.closePath();
 }
 
 export interface Dropping {
   id: string;
+  origin: Vec2;
   position: Vec2;
-  velocity: Vec2;
   matter: EatenMatter | null;
   age: number;
+  size: number;
+  rotation: number;
 }
 
 export interface SoundPulseVisual {
@@ -119,8 +204,9 @@ export interface RenderState {
   snapshot: HabitatSnapshot;
   targetFood: EdibleCode | null;
   chewAmount: number;
-  particles: CodeParticle[];
+  faceBubble: "🎵" | "💨" | "💢" | null;
   droppings: Dropping[];
+  hoveredDropping: Dropping | null;
   pulses: SoundPulseVisual[];
   hatching: number;
   now: number;
@@ -131,6 +217,8 @@ export class BugRenderer {
   private readonly context: CanvasRenderingContext2D;
   private readonly creatureSurface = document.createElement("canvas");
   private readonly creatureContext: CanvasRenderingContext2D;
+  private readonly messageSurface = document.createElement("canvas");
+  private readonly messageContext: CanvasRenderingContext2D;
   private readonly faceImage = new Image();
   private pixelRatio = 1;
 
@@ -141,6 +229,9 @@ export class BugRenderer {
     const creatureContext = this.creatureSurface.getContext("2d");
     if (!creatureContext) throw new Error("Creature canvas is unavailable");
     this.creatureContext = creatureContext;
+    const messageContext = this.messageSurface.getContext("2d");
+    if (!messageContext) throw new Error("Message canvas is unavailable");
+    this.messageContext = messageContext;
     this.faceImage.decoding = "async";
     this.faceImage.src = bugFaceUrl;
   }
@@ -158,13 +249,34 @@ export class BugRenderer {
     );
 
     this.drawPulses(state.pulses);
-    this.drawTarget(state);
+    if (SHOW_FOOD_ROUTE) this.drawTarget(state);
     this.drawDroppings(state.droppings);
-    this.drawParticles(state.particles);
-    this.drawLocomotionPlan(state);
+    if (SHOW_LOCOMOTION_GUIDE || DEBUG_SHOW_LANDING_TARGETS) {
+      this.drawLocomotionPlan(state);
+    }
 
     context.restore();
     for (const body of state.bodies) this.drawPixelatedCreature(state, body);
+    if (state.faceBubble) {
+      context.save();
+      context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+      context.translate(
+        snapshot.canvasOffsetX - snapshot.scrollX,
+        snapshot.canvasOffsetY - snapshot.scrollY
+      );
+      this.drawFaceBubble(state, state.faceBubble);
+      context.restore();
+    }
+    if (state.hoveredDropping) {
+      context.save();
+      context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+      context.translate(
+        snapshot.canvasOffsetX - snapshot.scrollX,
+        snapshot.canvasOffsetY - snapshot.scrollY
+      );
+      this.drawDroppingTooltip(state.hoveredDropping, snapshot);
+      context.restore();
+    }
   }
 
   private resize() {
@@ -219,47 +331,193 @@ export class BugRenderer {
     const context = this.context;
     for (const dropping of droppings) {
       const { x, y } = dropping.position;
+      const entrance = clamp(dropping.age / 0.22);
+      const emergence = 1 - Math.pow(1 - entrance, 3);
+      const popScale =
+        entrance < 1
+          ? entrance + Math.sin(entrance * Math.PI) * 0.32
+          : 1;
       context.save();
-      context.translate(x, y);
-      context.fillStyle = "#000000";
-      context.strokeStyle = "#ffffff";
-      context.lineWidth = 1.5;
-      for (let index = 0; index < 3; index += 1) {
-        context.beginPath();
-        context.ellipse(index * 3 - 3, -index * 3, 7 - index, 4.5, -0.25, 0, Math.PI * 2);
-        context.fill();
-        context.stroke();
-      }
-      if (dropping.matter) {
-        const label = dropping.matter.text.trim().slice(0, 18) || "code";
-        context.font = "11px ui-monospace, monospace";
-        const width = context.measureText(label).width + 12;
-        context.fillStyle = "#ffffff";
-        context.fillRect(-width / 2, 10, width, 18);
-        context.strokeStyle = "#000000";
-        context.strokeRect(-width / 2, 10, width, 18);
-        context.fillStyle = "#000000";
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-        context.fillText(label, 0, 19);
-      }
+      context.translate(
+        lerp(dropping.origin.x, x, emergence),
+        lerp(dropping.origin.y, y, emergence)
+      );
+      context.rotate(dropping.rotation);
+      context.scale(popScale, popScale);
+      context.font = `${Math.round(dropping.size)}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("💩", 0, 0);
       context.restore();
     }
   }
 
-  private drawParticles(particles: CodeParticle[]) {
+  private drawDroppingTooltip(
+    dropping: Dropping,
+    snapshot: HabitatSnapshot
+  ) {
     const context = this.context;
-    for (const particle of particles) {
-      const progress = clamp(particle.age / particle.lifetime);
-      context.save();
-      context.globalAlpha = 1 - progress;
-      context.fillStyle = "#000000";
-      context.font = `${Math.round(lerp(13, 8, progress))}px ui-monospace, monospace`;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.fillText(particle.glyph, particle.position.x, particle.position.y);
-      context.restore();
+    const kind = dropping.matter?.kind.toUpperCase() ?? "UNKNOWN";
+    const source =
+      dropping.matter?.text.replace(/\s+/g, " ").trim() || "unknown matter";
+    const snippet = source.length > 38 ? `${source.slice(0, 37)}…` : source;
+    context.save();
+    context.font = "15px ui-monospace, SFMono-Regular, Menlo, monospace";
+    const width = clamp(context.measureText(snippet).width + 76, 220, 340);
+    const height = 92;
+    const visibleLeft = snapshot.scrollX + 8;
+    const visibleRight = snapshot.scrollX + snapshot.viewportWidth - 8;
+    const visibleTop = snapshot.scrollY + 8;
+    const visibleBottom = snapshot.scrollY + snapshot.viewportHeight - 8;
+    let left = dropping.position.x + 38;
+    if (left + width > visibleRight) left = dropping.position.x - width - 38;
+    left = clamp(left, visibleLeft, Math.max(visibleLeft, visibleRight - width));
+    const top = clamp(
+      dropping.position.y - height - 28,
+      visibleTop,
+      Math.max(visibleTop, visibleBottom - height)
+    );
+    context.restore();
+
+    this.drawPixelCloud(
+      { x: left + width / 2, y: top + height / 2 },
+      width,
+      height,
+      1,
+      (cloud, x, y, cloudWidth, cloudHeight) => {
+        cloud.fillStyle = "#000000";
+        cloud.textAlign = "center";
+        cloud.textBaseline = "middle";
+        cloud.font =
+          "bold 14px ui-monospace, SFMono-Regular, Menlo, monospace";
+        cloud.fillText(
+          `POOP OF ${kind}`,
+          x + cloudWidth * 0.5,
+          y + cloudHeight * 0.42,
+          cloudWidth * 0.72
+        );
+        cloud.font =
+          "15px ui-monospace, SFMono-Regular, Menlo, monospace";
+        cloud.fillText(
+          snippet,
+          x + cloudWidth * 0.5,
+          y + cloudHeight * 0.64,
+          cloudWidth * 0.7
+        );
+      }
+    );
+  }
+
+  private drawFaceBubble(
+    state: RenderState,
+    message: "🎵" | "💨" | "💢"
+  ) {
+    const context = this.context;
+    const { snapshot, body } = state;
+    const head = body.renderNodeAt(0, state.interpolation);
+    const direction = body.renderTravelDirection(state.interpolation);
+    const width = 86;
+    const height = 62;
+    const visibleLeft = snapshot.scrollX + 8;
+    const visibleRight = snapshot.scrollX + snapshot.viewportWidth - 8;
+    const visibleTop = snapshot.scrollY + 8;
+    const visibleBottom = snapshot.scrollY + snapshot.viewportHeight - 8;
+    const left = clamp(
+      head.x + direction.x * 36 - width / 2,
+      visibleLeft,
+      Math.max(visibleLeft, visibleRight - width)
+    );
+    const top = clamp(
+      head.y - 116,
+      visibleTop,
+      Math.max(visibleTop, visibleBottom - height)
+    );
+    const centre = { x: left + width / 2, y: top + height / 2 };
+    const pulse = 0.96 + Math.sin(state.now * 0.018) * 0.04;
+
+    this.drawPixelCloud(
+      centre,
+      width,
+      height,
+      pulse,
+      (cloud, x, y, cloudWidth, cloudHeight) => {
+        cloud.font = `30px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+        cloud.textAlign = "center";
+        cloud.textBaseline = "middle";
+        cloud.fillText(
+          message,
+          x + cloudWidth * 0.5,
+          y + cloudHeight * 0.55
+        );
+      }
+    );
+  }
+
+  private drawPixelCloud(
+    centre: Vec2,
+    width: number,
+    height: number,
+    pulse: number,
+    drawContents: (
+      context: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      width: number,
+      height: number
+    ) => void
+  ) {
+    const context = this.context;
+    const padding = 8;
+    const surfaceWidth = width + padding * 2;
+    const surfaceHeight = height + padding * 2;
+    const bitmapWidth = Math.ceil(surfaceWidth * MESSAGE_PIXEL_SCALE);
+    const bitmapHeight = Math.ceil(surfaceHeight * MESSAGE_PIXEL_SCALE);
+    if (this.messageSurface.width !== bitmapWidth) {
+      this.messageSurface.width = bitmapWidth;
     }
+    if (this.messageSurface.height !== bitmapHeight) {
+      this.messageSurface.height = bitmapHeight;
+    }
+
+    const cloud = this.messageContext;
+    cloud.setTransform(1, 0, 0, 1, 0, 0);
+    cloud.clearRect(0, 0, bitmapWidth, bitmapHeight);
+    cloud.imageSmoothingEnabled = false;
+    cloud.setTransform(
+      MESSAGE_PIXEL_SCALE,
+      0,
+      0,
+      MESSAGE_PIXEL_SCALE,
+      0,
+      0
+    );
+    const x = padding;
+    const y = padding;
+    cloud.fillStyle = "#ffffff";
+    cloud.strokeStyle = "#000000";
+    cloud.lineWidth = 3;
+    cloud.lineJoin = "round";
+    traceMessageCloud(cloud, x, y, width, height);
+    cloud.fill();
+    cloud.stroke();
+    drawContents(cloud, x, y, width, height);
+    cloud.setTransform(1, 0, 0, 1, 0, 0);
+    hardenMessagePixels(cloud, bitmapWidth, bitmapHeight);
+
+    const drawWidth = bitmapWidth / MESSAGE_PIXEL_SCALE;
+    const drawHeight = bitmapHeight / MESSAGE_PIXEL_SCALE;
+    context.save();
+    context.imageSmoothingEnabled = false;
+    context.translate(centre.x, centre.y);
+    context.scale(pulse, pulse);
+    context.drawImage(
+      this.messageSurface,
+      -drawWidth / 2,
+      -drawHeight / 2,
+      drawWidth,
+      drawHeight
+    );
+    context.restore();
   }
 
   private creatureBounds(
@@ -388,7 +646,7 @@ export class BugRenderer {
     this.drawNearLegAttachments(body, context, interpolation);
     this.drawBody(body, context, interpolation);
     this.drawLegs(body, context, interpolation, 1, false);
-    this.drawHead(body, context, interpolation);
+    this.drawHead(body, context, interpolation, state.chewAmount);
   }
 
   private drawLocomotionPlan(state: RenderState) {
@@ -594,20 +852,47 @@ export class BugRenderer {
   private drawHead(
     body: CaterpillarBody,
     context: CanvasRenderingContext2D,
-    interpolation: number
+    interpolation: number,
+    chewAmount: number
   ) {
     const head = body.renderNodeAt(0, interpolation);
     const direction = body.renderTravelDirection(interpolation);
+    const normal = { x: -direction.y, y: direction.x };
     const angle = Math.atan2(direction.y, direction.x);
     const radius = body.renderRadiusAt(0, interpolation) * 1.12;
     const bodywardOffset = 2;
+    const chewProgress = clamp(chewAmount);
+    const chewEnvelope = Math.sin(Math.PI * chewProgress);
+    const chewPhase = chewProgress * Math.PI * 2 * 5;
+    const forwardBob =
+      (Math.sin(chewPhase) * 10.5 +
+        Math.sin(chewPhase * 2.15 + 0.4) * 2.8) *
+      chewEnvelope;
+    const sidewaysBob =
+      (Math.sin(chewPhase * 0.72 + 0.9) * 8 +
+        Math.sin(chewPhase * 1.7) * 2.1) *
+      chewEnvelope;
+    const chewRotation =
+      Math.sin(chewPhase + 0.45) * 0.28 * chewEnvelope;
+    const chewSize =
+      1 + Math.sin(chewPhase - 0.35) * 0.38 * chewEnvelope;
+    const chewSquash =
+      Math.sin(chewPhase * 2 + 0.25) * 0.14 * chewEnvelope;
 
     context.save();
     context.translate(
-      head.x - direction.x * bodywardOffset,
-      head.y - direction.y * bodywardOffset
+      head.x - direction.x * bodywardOffset +
+        direction.x * forwardBob +
+        normal.x * sidewaysBob,
+      head.y - direction.y * bodywardOffset +
+        direction.y * forwardBob +
+        normal.y * sidewaysBob
     );
-    context.rotate(angle + (Math.PI * 3) / 2);
+    context.rotate(angle + (Math.PI * 3) / 2 + chewRotation);
+    context.scale(
+      chewSize * (1 + chewSquash),
+      chewSize * (1 - chewSquash)
+    );
     if (this.faceImage.complete && this.faceImage.naturalWidth > 0) {
       const faceSize = radius * 3.4 * 1.5 * 1.3 * 1.2 * 0.8 * 0.7;
       context.imageSmoothingEnabled = false;
@@ -626,7 +911,7 @@ export class BugRenderer {
 export function droppingAtPoint(
   droppings: Dropping[],
   point: Vec2,
-  radius = 22
+  radius = 24
 ) {
   return droppings.find((dropping) => distance(dropping.position, point) <= radius) ?? null;
 }
