@@ -1,0 +1,49 @@
+.cm-bug-habitat {
+  position: relative;
+}
+
+.cm-bug-habitat > .cm-editor {
+  position: relative;
+  z-index: 1;
+}
+
+.cm-bug-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
+.cm-bug-chewing {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  transform-origin: 50% 55%;
+  background: #ffffff;
+  box-shadow: -2px 0 #ffffff, 2px 0 #ffffff;
+  animation: bug-code-chew 230ms steps(2, end) infinite;
+  will-change: transform;
+}
+
+@keyframes bug-code-chew {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1, 1);
+  }
+
+  25% {
+    transform: translate(-2px, 1px) scale(1.08, 0.78);
+  }
+
+  50% {
+    transform: translate(2px, -1px) scale(0.86, 1.18);
+  }
+
+  75% {
+    transform: translate(-1px, 1px) scale(1.03, 0.9);
+  }
+}

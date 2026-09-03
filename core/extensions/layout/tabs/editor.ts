@@ -14,6 +14,10 @@ import {
 } from "../../../../app/desktop/src/renderer/file";
 
 import { ElectronAPI } from "@core/api";
+import {
+  LivingCodeBug,
+  bugHabitatExtension,
+} from "../../bug";
 
 export class EditorTabState extends TabState<EditorState> {
   static create(config?: EditorStateConfig, id?: string) {
@@ -34,7 +38,10 @@ export class EditorTabState extends TabState<EditorState> {
 }
 
 export class EditorTabView extends TabView<EditorState> {
-  private editor;
+  private editor: EditorView;
+  private bug: LivingCodeBug | null = null;
+  private offTidalNow: (() => void) | null = null;
+  private lastRhythmQuarter: number | null = null;
 
   // TODO: ScrollTarget type isn't exported currently
   private scrollSnapshot: any | null = null;
@@ -43,9 +50,18 @@ export class EditorTabView extends TabView<EditorState> {
     layout: LayoutView,
     id: string,
     private api: typeof ElectronAPI,
-    config?: EditorStateConfig
+    config?: EditorStateConfig,
+    bugEnabled = true
   ) {
-    const state = EditorTabState.create(config, id);
+    const state = EditorTabState.create(
+      bugEnabled
+        ? {
+            ...config,
+            extensions: [config?.extensions ?? [], bugHabitatExtension],
+          }
+        : config,
+      id
+    );
     super(layout, state);
 
     // Set up dom...
@@ -58,9 +74,39 @@ export class EditorTabView extends TabView<EditorState> {
           effects: [swapContents.of({ id: this.state.id, contents: tr.state })],
         });
         this.editor.update([tr]);
+        if (tr.docChanged) this.bug?.invalidateDocument();
       },
     });
+    this.bug = bugEnabled
+      ? new LivingCodeBug(this.editor, this.dom)
+      : null;
+    if (this.bug && typeof this.api.onTidalNow === "function") {
+      this.offTidalNow = this.api.onTidalNow(this.onTidalNow);
+    }
   }
+
+  private readonly onTidalNow = (cycle: number) => {
+    if (!Number.isFinite(cycle)) return;
+    const quarter = Math.floor(Math.max(0, cycle) * 4 + 1e-7);
+    if (this.lastRhythmQuarter === null) {
+      this.lastRhythmQuarter = quarter;
+      return;
+    }
+    if (quarter < this.lastRhythmQuarter) {
+      if (this.lastRhythmQuarter - quarter > 4) {
+        this.lastRhythmQuarter = quarter;
+        this.bug?.clearRhythm();
+      }
+      return;
+    }
+    if (quarter === this.lastRhythmQuarter) return;
+    this.lastRhythmQuarter = quarter;
+    this.bug?.rhythmPulse({
+      startedAt: performance.now(),
+      intensity: 1,
+      direction: quarter % 2 === 0 ? 1 : -1,
+    });
+  };
 
   update(tr: LayoutTransaction) {
     super.update(tr);
@@ -77,6 +123,7 @@ export class EditorTabView extends TabView<EditorState> {
 
   beforeUnmount() {
     this.scrollSnapshot = this.editor.scrollSnapshot();
+    this.bug?.unmount();
   }
 
   afterMount() {
@@ -85,6 +132,7 @@ export class EditorTabView extends TabView<EditorState> {
         this.editor.state.update({ effects: this.scrollSnapshot }),
       ]);
     }
+    this.bug?.mount();
   }
 
   beforeClose() {
@@ -93,6 +141,10 @@ export class EditorTabView extends TabView<EditorState> {
   }
 
   destroy() {
+    this.offTidalNow?.();
+    this.offTidalNow = null;
+    this.bug?.destroy();
+    this.bug = null;
     this.editor.destroy();
   }
 }

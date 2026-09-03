@@ -357,7 +357,8 @@ export class Editor {
 
     api.onOpen(({ id, path }) => {
       // TODO: This is a hacky heuristic
-      let languageMode = path?.endsWith("settings.json") ? settings() : tidal();
+      const isTidalDocument = !path?.endsWith("settings.json");
+      const languageMode = isTidalDocument ? tidal() : settings();
 
       let offContent = api.onContent(id, ({ doc: docJSON, version, saved }) => {
         let doc = Text.of(docJSON);
@@ -365,27 +366,33 @@ export class Editor {
         layout.dispatch({
           changes: [
             {
-              view: new EditorTabView(layout, id, api, {
-                doc,
-                extensions: [
-                  oneDark,
-                  organicCodeContour,
-                  evaluationWithHighlights(sendEvaluation),
-                  highlighter(api),
-                  evaluation((evaluated) => {
-                    tidalConsole.toggleVisibility(false);
-                    rememberEvaluation(evaluated);
-                  }),
-                  languageMode,
-                  basicSetup,
-                  fileSync(
-                    id,
-                    { path, saved, version, thisVersion: version },
-                    api
-                  ),
-                  // peer(version),
-                ],
-              }),
+              view: new EditorTabView(
+                layout,
+                id,
+                api,
+                {
+                  doc,
+                  extensions: [
+                    oneDark,
+                    organicCodeContour,
+                    evaluationWithHighlights(sendEvaluation),
+                    highlighter(api),
+                    evaluation((evaluated) => {
+                      tidalConsole.toggleVisibility(false);
+                      rememberEvaluation(evaluated);
+                    }),
+                    languageMode,
+                    basicSetup,
+                    fileSync(
+                      id,
+                      { path, saved, version, thisVersion: version },
+                      api
+                    ),
+                    // peer(version),
+                  ],
+                },
+                isTidalDocument
+              ),
             },
           ],
         });

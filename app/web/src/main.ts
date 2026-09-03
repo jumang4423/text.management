@@ -31,6 +31,7 @@ const emptyApi: typeof ElectronAPI = {
   onClose: emptyHandler,
   onConsoleMessage: emptyHandler,
   onTidalVersion: emptyHandler,
+  onTidalNow: emptyHandler,
   evaluate: empty,
 };
 
@@ -50,25 +51,30 @@ export class Editor {
     layout.dispatch({
       changes: [
         {
-          view: new EditorTabView(layout, "editor", emptyApi, {
-            doc: Text.of([""]),
-            extensions: [
-              tidal(),
-              keymap.of([indentWithTab]),
-              // evaluation(),
-              basicSetup,
-              oneDark,
-              fileSync(
-                "editor",
-                { path: null, saved: false, version: 0, thisVersion: 0 },
-                emptyApi
-              ),
-              // electronConsole(api),
-              // peer(api, 0),
-              // @ts-ignore
-              // toolbar(emptyApi, "1.9.4"),
-            ],
-          }),
+          view: new EditorTabView(
+            layout,
+            "editor",
+            emptyApi,
+            {
+              doc: Text.of([""]),
+              extensions: [
+                tidal(),
+                keymap.of([indentWithTab]),
+                // evaluation(),
+                basicSetup,
+                oneDark,
+                fileSync(
+                  "editor",
+                  { path: null, saved: false, version: 0, thisVersion: 0 },
+                  emptyApi
+                ),
+                // electronConsole(api),
+                // peer(api, 0),
+                // @ts-ignore
+                // toolbar(emptyApi, "1.9.4"),
+              ],
+            }
+          ),
         },
       ],
     });
