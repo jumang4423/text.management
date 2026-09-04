@@ -59,6 +59,8 @@ interface CreatureAgent {
   forageStalledFor: number;
   poopMission: PoopMission | null;
   angerBubbleUntil: number;
+  musicBubbleAt: number;
+  musicBubbleUntil: number;
 }
 
 interface RecentBite {
@@ -67,13 +69,15 @@ interface RecentBite {
 }
 
 const LOCOMOTION_TIME_SCALE = 5;
-const CREATURE_COUNT = 3;
+const CREATURE_COUNT = 1;
 const POINTER_CLICK_RADIUS = 22;
 const ANGER_BUBBLE_HOLD_MS = 2_000;
+const POST_POOP_MUSIC_DELAY_MS = 1_000;
+const POST_POOP_MUSIC_HOLD_MS = 2_000;
 const TOILET_ARRIVAL_RADIUS = 52;
 const POOP_MIN_SPACING = 96;
 const POOP_ANIMATION_SECONDS = 0.65;
-const POOP_RETURN_SECONDS = 0.9;
+const POOP_RETURN_SECONDS = 0.45;
 const CHEW_DURATION_SECONDS = 5;
 
 export interface BugWorldMetrics extends CreatureVitals {
@@ -134,6 +138,8 @@ export class BugWorld {
       forageStalledFor: 0,
       poopMission: null,
       angerBubbleUntil: 0,
+      musicBubbleAt: 0,
+      musicBubbleUntil: 0,
     }));
     this.bodies = this.agents.map((agent) => agent.body);
     this.brains = this.agents.map((agent) => agent.brain);
@@ -174,6 +180,8 @@ export class BugWorld {
       agent.forageStalledFor = 0;
       agent.poopMission = null;
       agent.angerBubbleUntil = 0;
+      agent.musicBubbleAt = 0;
+      agent.musicBubbleUntil = 0;
     }
     this.droppings.length = 0;
     this.pulses.length = 0;
@@ -237,6 +245,7 @@ export class BugWorld {
       // A bite is committed only after the full chew. Disturbing a creature
       // clears only that creature's pending bite.
       if (agent.chew) {
+        agent.brain.onMealInterrupted();
         this.stopChewing(agent);
         this.resetForageProgress(agent);
         chewingChanged = true;
@@ -312,11 +321,15 @@ export class BugWorld {
           ? clamp(agent.chew.elapsed / CHEW_DURATION_SECONDS)
           : 0,
         faceBubble:
-          now < agent.angerBubbleUntil
-            ? "💢"
-            : agent.poopMission?.settled
-              ? "💨"
-              : null,
+          agent.poopMission?.settled
+            ? "💨"
+            : agent.chew
+              ? "🍙"
+              : now >= agent.musicBubbleAt && now < agent.musicBubbleUntil
+                ? "🎵"
+                : now < agent.angerBubbleUntil
+                  ? "💢"
+                  : null,
       })),
       snapshot: this.snapshot,
       droppings: this.droppings,
@@ -404,6 +417,7 @@ export class BugWorld {
         bounds: visibleBounds,
         pointer: this.pointer,
         foods: availableFoods,
+        activeLineRect: this.snapshot.activeLineRect,
         chewing: agent.chew !== null,
         toiletTarget: agent.poopMission?.target ?? null,
       });
@@ -462,7 +476,12 @@ export class BugWorld {
       ) {
         agent.body.update(deltaSeconds, control, worldBounds);
       }
-      this.updateDigestion(agent, deltaSeconds, decision.behaviour);
+      this.updateDigestion(
+        agent,
+        deltaSeconds,
+        decision.behaviour,
+        visibleBounds
+      );
     }
 
     if (this.snapshotAge >= 1) {
@@ -501,10 +520,10 @@ export class BugWorld {
       // second trigger is a narrow deadlock guard: if the mouth has spent over
       // a second circling within one body length, finish the already-visible
       // approach instead of allowing an endless one-sided turn.
-      const reachedFood = mouthDistance < 42 * CREATURE_SIZE_SCALE;
+      const reachedFood = mouthDistance < 28 * CREATURE_SIZE_SCALE;
       const stalledBesideFood =
-        mouthDistance < 68 * CREATURE_SIZE_SCALE &&
-        agent.forageStalledFor > 1.25;
+        mouthDistance < 48 * CREATURE_SIZE_SCALE &&
+        agent.forageStalledFor > 0.72;
       if (reachedFood || stalledBesideFood) {
         agent.chew = { foodId: target.id, elapsed: 0 };
         this.resetForageProgress(agent);
@@ -571,7 +590,8 @@ export class BugWorld {
   private updateDigestion(
     agent: CreatureAgent,
     deltaSeconds: number,
-    behaviour: BrainDecision["behaviour"]
+    behaviour: BrainDecision["behaviour"],
+    bounds: Rect
   ) {
     for (let index = 0; index < agent.stomach.length; index += 1) {
       const item = agent.stomach[index];
@@ -618,7 +638,15 @@ export class BugWorld {
       returnProgress: null,
     });
     agent.poopMission = null;
-    agent.brain.onPoop();
+    const musicAt = performance.now() + POST_POOP_MUSIC_DELAY_MS;
+    agent.musicBubbleAt = musicAt;
+    agent.musicBubbleUntil = musicAt + POST_POOP_MUSIC_HOLD_MS;
+    agent.brain.onPoop(
+      agent.body.head,
+      agent.body.travelDirection,
+      bounds,
+      this.snapshot.activeLineRect
+    );
   }
 
   private tailPoopPlacement(body: CaterpillarBody) {

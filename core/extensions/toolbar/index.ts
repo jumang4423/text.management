@@ -3,6 +3,11 @@ import { showPanel, Panel } from "@codemirror/view";
 import { ElectronAPI } from "@core/api";
 import { Config } from "@core/state";
 import { dampedSpringKeyframes } from "@core/animation/spring";
+import {
+  isLivingCodeBugVisible,
+  onLivingCodeBugVisibilityChange,
+  setLivingCodeBugVisible,
+} from "../bug";
 
 import { getTimer } from "./timer";
 
@@ -30,6 +35,29 @@ export function toolbarConstructor(
 
   let timer = getTimer(configuration);
   toolbarLeft.appendChild(timer.dom);
+
+  const bugToggle = toolbarLeft.appendChild(document.createElement("button"));
+  bugToggle.type = "button";
+  bugToggle.className = "cm-bug-toggle";
+  bugToggle.setAttribute("role", "switch");
+  bugToggle.setAttribute("aria-label", "Show living code bug");
+  bugToggle.title = "Show or hide the living code bug";
+  const bugToggleLabel = bugToggle.appendChild(document.createElement("span"));
+  bugToggleLabel.textContent = "BUG";
+  const bugToggleTrack = bugToggle.appendChild(document.createElement("span"));
+  bugToggleTrack.className = "cm-bug-toggle-track";
+  bugToggleTrack.setAttribute("aria-hidden", "true");
+  bugToggleTrack.appendChild(document.createElement("span")).className =
+    "cm-bug-toggle-knob";
+  const syncBugToggle = (visible: boolean) => {
+    bugToggle.setAttribute("aria-checked", String(visible));
+  };
+  syncBugToggle(isLivingCodeBugVisible());
+  const toggleBug = () => {
+    setLivingCodeBugVisible(!isLivingCodeBugVisible());
+  };
+  bugToggle.addEventListener("click", toggleBug);
+  const offBugVisibility = onLivingCodeBugVisibilityChange(syncBugToggle);
 
   // Status indicators for future use: ◯◉✕
   let tidalInfo = new ToolbarMenu(
@@ -153,6 +181,8 @@ export function toolbarConstructor(
   return {
     dom: toolbarNode,
     destroy() {
+      offBugVisibility();
+      bugToggle.removeEventListener("click", toggleBug);
       offTidalVersion();
       offTidalNow();
       offTidalHighlight();

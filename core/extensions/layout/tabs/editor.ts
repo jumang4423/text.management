@@ -17,6 +17,8 @@ import { ElectronAPI } from "@core/api";
 import {
   LivingCodeBug,
   bugHabitatExtension,
+  isLivingCodeBugVisible,
+  onLivingCodeBugVisibilityChange,
 } from "../../bug";
 
 export class EditorTabState extends TabState<EditorState> {
@@ -41,6 +43,7 @@ export class EditorTabView extends TabView<EditorState> {
   private editor: EditorView;
   private bug: LivingCodeBug | null = null;
   private offTidalNow: (() => void) | null = null;
+  private offBugVisibility: (() => void) | null = null;
   private lastRhythmQuarter: number | null = null;
 
   // TODO: ScrollTarget type isn't exported currently
@@ -80,6 +83,12 @@ export class EditorTabView extends TabView<EditorState> {
     this.bug = bugEnabled
       ? new LivingCodeBug(this.editor, this.dom)
       : null;
+    if (this.bug) {
+      this.bug.setEnabled(isLivingCodeBugVisible());
+      this.offBugVisibility = onLivingCodeBugVisibilityChange((visible) => {
+        this.bug?.setEnabled(visible);
+      });
+    }
     if (this.bug && typeof this.api.onTidalNow === "function") {
       this.offTidalNow = this.api.onTidalNow(this.onTidalNow);
     }
@@ -141,6 +150,8 @@ export class EditorTabView extends TabView<EditorState> {
   }
 
   destroy() {
+    this.offBugVisibility?.();
+    this.offBugVisibility = null;
     this.offTidalNow?.();
     this.offTidalNow = null;
     this.bug?.destroy();

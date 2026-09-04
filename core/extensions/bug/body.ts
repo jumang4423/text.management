@@ -81,7 +81,8 @@ export interface CaterpillarBodyOptions {
   randomSeed?: number;
 }
 
-export const CREATURE_SIZE_SCALE = 0.8;
+// The single-creature presentation is 1.25x the original 0.8 scale.
+export const CREATURE_SIZE_SCALE = 1;
 
 // Deliberately oversized: the hands must read as the source of locomotion.
 const LEG_LINK_LENGTHS: readonly [number, number, number] = [

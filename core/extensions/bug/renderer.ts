@@ -218,7 +218,7 @@ export interface CreatureRenderState {
   behaviour: Behaviour;
   targetFood: EdibleCode | null;
   chewAmount: number;
-  faceBubble: "💨" | "💢" | null;
+  faceBubble: "💨" | "💢" | "🍙" | "🎵" | null;
 }
 
 export interface RenderState {
@@ -433,7 +433,7 @@ export class BugRenderer {
   private drawFaceBubble(
     state: RenderState,
     creature: CreatureRenderState,
-    message: "💨" | "💢"
+    message: "💨" | "💢" | "🍙" | "🎵"
   ) {
     const context = this.context;
     const { snapshot } = state;
@@ -979,7 +979,9 @@ export class BugRenderer {
     const bodywardOffset = 2 * CREATURE_SIZE_SCALE;
     const chewProgress = clamp(chewAmount);
     const chewEnvelope = Math.sin(Math.PI * chewProgress);
-    const chewPhase = chewProgress * Math.PI * 2 * 5;
+    // Keep the five-second meal, but run the face at 3x its previous chew rate
+    // (7.5x the original motion).
+    const chewPhase = chewProgress * Math.PI * 2 * 5 * 7.5;
     const forwardBob =
       (Math.sin(chewPhase) * 10.5 +
         Math.sin(chewPhase * 2.15 + 0.4) * 2.8) *

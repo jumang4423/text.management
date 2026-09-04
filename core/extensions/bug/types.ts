@@ -39,6 +39,7 @@ export interface HabitatSnapshot {
   scrollY: number;
   canvasOffsetX: number;
   canvasOffsetY: number;
+  activeLineRect: Rect | null;
   edibles: EdibleCode[];
 }
 
@@ -81,6 +82,7 @@ export interface BrainSenses {
   bounds: Rect;
   pointer: PointerSense;
   foods: EdibleCode[];
+  activeLineRect: Rect | null;
   chewing: boolean;
   toiletTarget: Vec2 | null;
 }

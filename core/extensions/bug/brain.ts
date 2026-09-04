@@ -3,7 +3,10 @@ import {
   clamp,
   closestPointOnRect,
   distance,
+  exponentialApproach,
+  lerp,
   normalize,
+  perpendicular,
   Random,
   subtract,
   type Rect,
@@ -25,13 +28,19 @@ export const BUG_POINTER_CONTACT_RADIUS = 72;
 const FLEE_ARRIVAL_RADIUS = 48;
 const FLEE_TIMEOUT_SECONDS = 2.6;
 const HUNGRY_THRESHOLD = 0.78;
-const BASE_HUNGER_PER_SECOND = 0.032 / 3;
+const STARTLED_APPETITE_DROP = 0.06;
+const BASE_HUNGER_PER_SECOND = (0.032 / 3) * 1.4 * 1.5;
 const HUNGER_RATE_MIN = 0.65;
 const HUNGER_RATE_MAX = 1.45;
 const INITIAL_HUNGER_MIN = 0.63;
 const INITIAL_HUNGER_MAX = 0.71;
 const RECENT_FOOD_LIMIT = 8;
 const RECENT_FOOD_RADIUS = 72;
+const ACTIVE_LINE_CLEARANCE = 118;
+const ACTIVE_LINE_FOOD_CLEARANCE = 68;
+const CRUISE_SPEED_MIN = 40;
+const CRUISE_SPEED_MAX = 150;
+const INITIAL_CRUISE_SPEED = 105;
 
 interface RecentFood {
   from: number;
@@ -52,6 +61,9 @@ export class CaterpillarBrain {
   private roamTarget: Vec2 | null = null;
   private fleeTarget: Vec2 | null = null;
   private fleeRemaining = 0;
+  private cruiseSpeed = INITIAL_CRUISE_SPEED;
+  private cruiseSpeedTarget = INITIAL_CRUISE_SPEED;
+  private cruiseMoodRemaining = 0;
 
   constructor(randomSeed = 0xc0deba5e) {
     this.random = new Random(randomSeed);
@@ -71,8 +83,8 @@ export class CaterpillarBrain {
   update(senses: BrainSenses): BrainDecision {
     const deltaSeconds = senses.deltaSeconds;
     this.age += deltaSeconds;
-    // Three creatures share the editor, but each keeps a stable metabolism.
     this.hunger = clamp(this.hunger + deltaSeconds * this.hungerPerSecond);
+    this.updateCruiseSpeed(deltaSeconds);
 
     const pointerDanger =
       senses.pointer.active &&
@@ -119,15 +131,14 @@ export class CaterpillarBrain {
     }
 
     if (this.behaviour === "hatching") {
-      // The hatch itself is already a stationary beat. Start every creature on
-      // its first independently seeded roam immediately, otherwise the three
-      // random 2-8 second rests make only the earliest one appear alive.
-      this.beginRoam(senses.bounds);
+      // The hatch itself is already a stationary beat, so start the first roam
+      // immediately and choose a destination away from the active code line.
+      this.beginRoam(senses.bounds, senses.activeLineRect, senses.head);
     } else if (this.behaviour === "fleeing") {
       // Leaving the pointer's danger radius must not look like the pointer
       // switched locomotion off. Resume roaming; ordinary arrival still owns
       // the deliberate 2-8 second rests.
-      this.beginRoam(senses.bounds);
+      this.beginRoam(senses.bounds, senses.activeLineRect, senses.head);
     }
 
     if (senses.chewing) {
@@ -153,8 +164,29 @@ export class CaterpillarBrain {
       );
     }
 
+    const activeLineDistance = senses.activeLineRect
+      ? distance(
+          senses.head,
+          closestPointOnRect(senses.head, senses.activeLineRect)
+        )
+      : Infinity;
+    if (
+      (this.behaviour === "resting" || this.behaviour === "wandering") &&
+      activeLineDistance < ACTIVE_LINE_CLEARANCE
+    ) {
+      // Crossing the active line is fine; stopping in front of it is not.
+      this.beginRoam(senses.bounds, senses.activeLineRect, senses.head);
+    }
+
     if (this.hunger >= HUNGRY_THRESHOLD) {
-      const food = this.chooseFood(senses.foods, senses.head);
+      const foodsAwayFromActiveLine = senses.activeLineRect
+        ? senses.foods.filter(
+            (food) =>
+              this.rectDistance(food.rect, senses.activeLineRect!) >=
+              ACTIVE_LINE_FOOD_CLEARANCE
+          )
+        : senses.foods;
+      const food = this.chooseFood(foodsAwayFromActiveLine, senses.head);
       if (food) {
         this.behaviour = "foraging";
         this.targetFoodId = food.id;
@@ -166,8 +198,8 @@ export class CaterpillarBrain {
         const foodDistance = distance(bitePoint, senses.head);
         // Full cruise speed has a larger turning radius than the mouth. Slow
         // only for the final approach so pure pursuit cannot orbit forever.
-        const approach = clamp((foodDistance - 20) / 140);
-        const approachSpeed = 18 + approach * 124;
+        const approach = clamp((foodDistance - 12) / 92);
+        const approachSpeed = 62 + approach * (this.cruiseSpeed - 62);
         return this.decision(
           normalize(subtract(bitePoint, senses.head)),
           approachSpeed
@@ -183,11 +215,11 @@ export class CaterpillarBrain {
     if (this.behaviour === "resting") {
       this.restRemaining -= deltaSeconds;
       if (this.restRemaining > 0) return this.decision({ x: 1, y: 0 });
-      this.beginRoam(senses.bounds);
+      this.beginRoam(senses.bounds, senses.activeLineRect, senses.head);
     }
 
     if (!this.roamTarget || !this.targetInside(this.roamTarget, senses.bounds)) {
-      this.beginRoam(senses.bounds);
+      this.beginRoam(senses.bounds, senses.activeLineRect, senses.head);
     }
     const roamTarget = this.roamTarget;
     if (!roamTarget) {
@@ -224,8 +256,53 @@ export class CaterpillarBrain {
     this.beginRest();
   }
 
-  onPoop() {
-    this.beginRest();
+  onMealInterrupted() {
+    // A close threat briefly suppresses appetite. Hunger then resumes rising
+    // at the normal personal metabolism rate after the creature escapes.
+    this.hunger = clamp(this.hunger - STARTLED_APPETITE_DROP);
+    this.targetFoodId = null;
+  }
+
+  onPoop(
+    head: Vec2,
+    travelDirection: Vec2,
+    bounds: Rect,
+    activeLineRect: Rect | null
+  ) {
+    const forward = normalize(travelDirection, { x: 1, y: 0 });
+    const sideways = perpendicular(forward);
+    const margin = Math.max(
+      28,
+      Math.min(92, bounds.width * 0.18, bounds.height * 0.18)
+    );
+    const candidates = ([-1, 1] as const).map((side) => ({
+      x: clamp(
+        head.x + sideways.x * side * 190 + forward.x * 36,
+        bounds.x + margin,
+        bounds.x + bounds.width - margin
+      ),
+      y: clamp(
+        head.y + sideways.y * side * 190 + forward.y * 36,
+        bounds.y + margin,
+        bounds.y + bounds.height - margin
+      ),
+    }));
+    this.roamTarget = candidates.reduce((best, candidate) => {
+      if (!activeLineRect) {
+        return this.random.next() < 0.5 ? candidate : best;
+      }
+      const candidateDistance = this.rectDistance(
+        { x: candidate.x, y: candidate.y, width: 1, height: 1 },
+        activeLineRect
+      );
+      const bestDistance = this.rectDistance(
+        { x: best.x, y: best.y, width: 1, height: 1 },
+        activeLineRect
+      );
+      return candidateDistance > bestDistance ? candidate : best;
+    });
+    this.restRemaining = 0;
+    this.behaviour = "wandering";
   }
 
   starve() {
@@ -241,6 +318,9 @@ export class CaterpillarBrain {
     this.roamTarget = null;
     this.fleeTarget = null;
     this.fleeRemaining = 0;
+    this.cruiseSpeed = INITIAL_CRUISE_SPEED;
+    this.cruiseSpeedTarget = INITIAL_CRUISE_SPEED;
+    this.cruiseMoodRemaining = 0;
     this.recentFoods.length = 0;
   }
 
@@ -345,18 +425,75 @@ export class CaterpillarBrain {
     this.roamTarget = null;
   }
 
-  private beginRoam(bounds: Rect) {
+  private beginRoam(
+    bounds: Rect,
+    activeLineRect: Rect | null = null,
+    origin: Vec2 | null = null
+  ) {
     const margin = Math.max(
       24,
       Math.min(78, bounds.width * 0.2, bounds.height * 0.2)
     );
     const availableWidth = Math.max(1, bounds.width - margin * 2);
     const availableHeight = Math.max(1, bounds.height - margin * 2);
-    this.roamTarget = {
+    const candidates = Array.from({ length: 10 }, () => ({
       x: bounds.x + margin + this.random.next() * availableWidth,
       y: bounds.y + margin + this.random.next() * availableHeight,
-    };
+    }));
+    this.roamTarget = candidates.reduce((best, candidate) => {
+      const activeLineScore = activeLineRect
+        ? this.rectDistance(
+            { x: candidate.x, y: candidate.y, width: 1, height: 1 },
+            activeLineRect
+          )
+        : 0;
+      const travelScore = origin ? Math.min(220, distance(candidate, origin)) : 0;
+      const bestActiveLineScore = activeLineRect
+        ? this.rectDistance(
+            { x: best.x, y: best.y, width: 1, height: 1 },
+            activeLineRect
+          )
+        : 0;
+      const bestTravelScore = origin ? Math.min(220, distance(best, origin)) : 0;
+      return activeLineScore + travelScore * 0.24 >
+        bestActiveLineScore + bestTravelScore * 0.24
+        ? candidate
+        : best;
+    });
     this.behaviour = "wandering";
+  }
+
+  private updateCruiseSpeed(deltaSeconds: number) {
+    this.cruiseMoodRemaining -= deltaSeconds;
+    if (this.cruiseMoodRemaining <= 0) {
+      // Ordinary locomotion continually changes tempo instead of returning to
+      // one mechanical default speed. Long, eased transitions keep it animal-
+      // like without introducing visible stepping.
+      this.cruiseSpeedTarget = this.random.between(
+        CRUISE_SPEED_MIN,
+        CRUISE_SPEED_MAX
+      );
+      this.cruiseMoodRemaining = this.random.between(1.8, 4.8);
+    }
+    this.cruiseSpeed = lerp(
+      this.cruiseSpeed,
+      this.cruiseSpeedTarget,
+      exponentialApproach(1.25, deltaSeconds)
+    );
+  }
+
+  private rectDistance(left: Rect, right: Rect) {
+    const horizontal = Math.max(
+      right.x - (left.x + left.width),
+      left.x - (right.x + right.width),
+      0
+    );
+    const vertical = Math.max(
+      right.y - (left.y + left.height),
+      left.y - (right.y + right.height),
+      0
+    );
+    return Math.hypot(horizontal, vertical);
   }
 
   private targetInside(target: Vec2, bounds: Rect) {
@@ -372,8 +509,8 @@ export class CaterpillarBrain {
     const speedByBehaviour: Record<Behaviour, number> = {
       hatching: 0,
       resting: 0,
-      wandering: 110,
-      foraging: 142,
+      wandering: this.cruiseSpeed,
+      foraging: this.cruiseSpeed,
       chewing: 18,
       toileting: 122,
       fleeing: 220,

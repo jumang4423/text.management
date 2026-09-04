@@ -18,6 +18,12 @@
   image-rendering: pixelated;
 }
 
+/* Author CSS sets display:block above, so do not rely on the lower-specificity
+   browser [hidden] rule to remove the final rendered frame. */
+.cm-bug-layer[hidden] {
+  display: none;
+}
+
 .cm-bug-chewing {
   position: relative;
   z-index: 2;

@@ -146,6 +146,22 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       scroll.clientHeight,
       this.view.contentHeight + this.view.defaultLineHeight * 2
     );
+    const activeLine = this.view.state.doc.lineAt(
+      this.view.state.selection.main.head
+    );
+    const activeLineBlock = this.view.lineBlockAt(activeLine.from);
+    const activeLineRect: Rect = {
+      x: contentX,
+      y: activeLineBlock.top,
+      width: Math.max(
+        120,
+        Math.min(
+          worldWidth - contentX,
+          activeLine.length * this.view.defaultCharacterWidth
+        )
+      ),
+      height: Math.max(this.view.defaultLineHeight, activeLineBlock.height),
+    };
 
     while (
       this.heatSources.length > 0 &&
@@ -163,6 +179,7 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       scrollY: scroll.scrollTop,
       canvasOffsetX: scrollRect.left - stageRect.left,
       canvasOffsetY: scrollRect.top - stageRect.top,
+      activeLineRect,
       edibles: this.extractEdibles(now, contentX),
     };
     this.lastSnapshot = snapshot;

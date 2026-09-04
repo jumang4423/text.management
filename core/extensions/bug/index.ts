@@ -14,11 +14,34 @@ export {
   type TidalFoodBlacklist,
 } from "./foodBlacklist";
 
+type BugVisibilityListener = (visible: boolean) => void;
+
+let bugVisible = true;
+const bugVisibilityListeners = new Set<BugVisibilityListener>();
+
+export function isLivingCodeBugVisible() {
+  return bugVisible;
+}
+
+export function setLivingCodeBugVisible(visible: boolean) {
+  if (bugVisible === visible) return;
+  bugVisible = visible;
+  for (const listener of bugVisibilityListeners) listener(visible);
+}
+
+export function onLivingCodeBugVisibilityChange(
+  listener: BugVisibilityListener
+) {
+  bugVisibilityListeners.add(listener);
+  return () => bugVisibilityListeners.delete(listener);
+}
+
 export class LivingCodeBug {
   private readonly canvas = document.createElement("canvas");
   private habitat: CodeMirrorHabitat | null = null;
   private world: BugWorld | null = null;
   private mounted = false;
+  private enabled = true;
 
   constructor(
     private readonly view: EditorView,
@@ -46,7 +69,21 @@ export class LivingCodeBug {
     } else {
       this.habitat.refreshViewport();
     }
-    this.world.start();
+    this.canvas.hidden = !this.enabled;
+    if (this.enabled) this.world.start();
+  }
+
+  setEnabled(enabled: boolean) {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    this.canvas.hidden = !enabled;
+    if (!enabled) {
+      this.world?.pointerLeave();
+      this.world?.pause();
+    } else if (this.mounted) {
+      this.habitat?.refreshViewport();
+      this.world?.start();
+    }
   }
 
   unmount() {
@@ -61,7 +98,7 @@ export class LivingCodeBug {
   }
 
   rhythmPulse(pulse: RhythmPulse) {
-    if (this.mounted) this.world?.rhythmPulse(pulse);
+    if (this.mounted && this.enabled) this.world?.rhythmPulse(pulse);
   }
 
   clearRhythm() {
@@ -90,6 +127,7 @@ export class LivingCodeBug {
   }
 
   private readonly pointerMove = (event: PointerEvent) => {
+    if (!this.enabled) return;
     this.world?.pointerMove(this.stagePoint(event), event.timeStamp);
   };
 
@@ -98,7 +136,7 @@ export class LivingCodeBug {
   };
 
   private readonly pointerDown = (event: PointerEvent) => {
-    if (!this.world || event.button !== 0) return;
+    if (!this.enabled || !this.world || event.button !== 0) return;
     const point = this.stagePoint(event);
     this.world.pointerMove(point, event.timeStamp);
     if (!this.world.pointerDown(point)) return;

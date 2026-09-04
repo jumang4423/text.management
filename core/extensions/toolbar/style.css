@@ -36,7 +36,59 @@
 
 .cm-toolbar-region {
   display: flex;
+  align-items: center;
   gap: var(--ui-space);
+}
+
+.cm-bug-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  outline: 0;
+  padding: 0 var(--ui-space);
+  color: inherit;
+  background: var(--color-ui-background-inactive);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.cm-bug-toggle:hover {
+  background: var(--color-ui-background);
+}
+
+.cm-bug-toggle:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-focus-border);
+}
+
+.cm-bug-toggle-track {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: 26px;
+  height: 14px;
+  padding: 2px;
+  border: 2px solid currentColor;
+  color: #000000;
+  background: #d3d3d3;
+}
+
+.cm-bug-toggle-knob {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  transform: translateX(0);
+  transition: transform 120ms ease;
+}
+
+.cm-bug-toggle[aria-checked="true"] .cm-bug-toggle-track {
+  color: #000000;
+  background: #ffffff;
+}
+
+.cm-bug-toggle[aria-checked="true"] .cm-bug-toggle-knob {
+  transform: translateX(12px);
 }
 
 .cm-menu {
