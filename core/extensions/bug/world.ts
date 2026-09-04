@@ -81,7 +81,7 @@ const POOP_MIN_SPACING = 96;
 const POOP_ANIMATION_SECONDS = 1;
 const POOP_RETURN_SECONDS = 0.45;
 const CHEW_DURATION_SECONDS = 3;
-const MUNCH_INTERVAL_SECONDS = 0.45;
+const MUNCH_INTERVAL_SECONDS = 0.2;
 
 export interface BugWorldMetrics extends CreatureVitals {
   foodCount: number;

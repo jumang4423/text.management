@@ -1625,13 +1625,13 @@ export class CaterpillarBody {
     const normal = perpendicular(tangent);
     const sideways =
       (Math.sin(phase) + Math.sin(phase * 2 + 0.6) * 0.24) *
-      15 *
+      28 *
       CREATURE_SIZE_SCALE *
       rearWeight *
       excitement;
     const squat =
       -Math.abs(Math.sin(phase)) *
-      4.2 *
+      6.5 *
       CREATURE_SIZE_SCALE *
       rearWeight *
       excitement;

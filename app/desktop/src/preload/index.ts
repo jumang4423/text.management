@@ -68,13 +68,10 @@ const ElectronAPI = {
 
   previewSample: (path: string) => send("browserPreview", { path }),
 
-  requestPoopSamples: () => send("poopSamples", undefined),
+  poopHit: (value: { kind: "wiggle" | "release" }) =>
+    send("poopHit", value),
 
-  onPoopSampleData: listen("poopSampleData"),
-
-  requestMunchSamples: () => send("munchSamples", undefined),
-
-  onMunchSampleData: listen("munchSampleData"),
+  munchHit: (value: { index: number }) => send("munchHit", value),
 
   copyText: (value: string) => send("browserCopy", { value }),
 

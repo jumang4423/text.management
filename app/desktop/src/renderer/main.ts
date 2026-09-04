@@ -314,25 +314,10 @@ api.onSettingsData((data) => {
   configuration.update(data);
 });
 
-// Poop jingles: funny25 on wiggle, funny26 on release. Prefetch once so the
-// first poop does not pay the main-process round trip.
+// Bug sound effects go straight to SuperDirt over OSC (no prefetch: the
+// main process fires them on demand).
 const poopSoundPlayer = new PoopSoundPlayer(api);
-poopSoundPlayer.prefetch();
 const munchPlayer = new MunchPlayer(api);
-munchPlayer.prefetch();
-// The module-level prefetches can race main-process startup, so retry once the
-// window has loaded (main listeners are attached by then). play() also
-// re-requests on every cache miss, so no poop stays silent forever.
-window.addEventListener(
-  "load",
-  () => {
-    poopSoundPlayer.prefetch();
-    munchPlayer.prefetch();
-  },
-  {
-    once: true,
-  }
-);
 
 // Color scheme extension
 const colorScheme = new ColorScheme(configuration);

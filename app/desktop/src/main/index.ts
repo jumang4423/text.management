@@ -14,7 +14,7 @@ import { dialog } from "electron";
 // autoUpdater.checkForUpdatesAndNotify();
 
 import { Config } from "@core/state";
-import type { PoopSoundKind } from "@core/extensions/bug/types";
+import { playDirtSample } from "./dirt";
 
 import { GHCI } from "@management/lang-tidal";
 import { Filesystem } from "./filesystem";
@@ -175,57 +175,20 @@ const createWindow = (configuration: Config) => {
         }
       })
     );
+    // Bug sound effects, played through SuperDirt as one-shots.
+    // funny25.wav is bank index 24, funny26.wav is index 25.
     listeners.push(
-      listen("poopSamples", async () => {
-        poopDebug("poopSamples request received");
-        const funnyDir = resolve(tidalWorkspace, "samples/funny");
-        const entries: { kind: PoopSoundKind; file: string }[] = [
-          { kind: "wiggle", file: "funny25.wav" },
-          { kind: "release", file: "funny26.wav" },
-        ];
-        for (const { kind, file } of entries) {
-          try {
-            const path = resolve(funnyDir, file);
-            if (!isInsideBrowserRoots(path)) {
-              throw new Error("Unsupported sample path");
-            }
-            const bytes = await readFile(path);
-            send("poopSampleData", {
-              kind,
-              mime: audioMime(".wav"),
-              data: new Uint8Array(bytes),
-            });
-            poopDebug(`poopSampleData sent kind=${kind} bytes=${bytes.length}`);
-          } catch (error) {
-            poopDebug(`poopSamples error: ${error}`);
-            send("browserError", `Could not load poop sample: ${error}`);
-          }
+      listen("poopHit", ({ kind }) => {
+        if (kind === "wiggle") {
+          playDirtSample({ sound: "funny", n: 24, gain: 0.85 });
+        } else {
+          playDirtSample({ sound: "funny", n: 25, gain: 0.9 });
         }
       })
     );
     listeners.push(
-      listen("munchSamples", async () => {
-        poopDebug("munchSamples request received");
-        const munchDir = resolve(tidalWorkspace, "samples/mc_eat");
-        const files = ["eat1.wav", "eat2.wav", "eat3.wav"];
-        for (const [index, file] of files.entries()) {
-          try {
-            const path = resolve(munchDir, file);
-            if (!isInsideBrowserRoots(path)) {
-              throw new Error("Unsupported sample path");
-            }
-            const bytes = await readFile(path);
-            send("munchSampleData", {
-              index,
-              mime: audioMime(".wav"),
-              data: new Uint8Array(bytes),
-            });
-            poopDebug(`munchSampleData sent index=${index} bytes=${bytes.length}`);
-          } catch (error) {
-            poopDebug(`munchSamples error: ${error}`);
-            send("browserError", `Could not load munch sample: ${error}`);
-          }
-        }
+      listen("munchHit", ({ index }) => {
+        playDirtSample({ sound: "mc_eat", n: index, gain: 1 });
       })
     );
     listeners.push(
@@ -357,19 +320,6 @@ const createWindow = (configuration: Config) => {
 };
 
 import { readFile, readdir } from "fs/promises";
-import { appendFileSync } from "fs";
-
-// TEMPORARY debug logging for poop/munch silence investigation.
-function poopDebug(message: string) {
-  try {
-    appendFileSync(
-      "/tmp/text-management-poop-debug.log",
-      `${new Date().toISOString()} ${message}\n`
-    );
-  } catch {
-    // never break the app for logging
-  }
-}
 
 function isInsideBrowserRoots(path: string) {
   const resolvedPath = resolve(path);
