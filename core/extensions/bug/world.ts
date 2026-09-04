@@ -76,9 +76,9 @@ const POST_POOP_MUSIC_DELAY_MS = 1_000;
 const POST_POOP_MUSIC_HOLD_MS = 2_000;
 const TOILET_ARRIVAL_RADIUS = 52;
 const POOP_MIN_SPACING = 96;
-const POOP_ANIMATION_SECONDS = 0.65;
+const POOP_ANIMATION_SECONDS = 1;
 const POOP_RETURN_SECONDS = 0.45;
-const CHEW_DURATION_SECONDS = 5;
+const CHEW_DURATION_SECONDS = 3;
 
 export interface BugWorldMetrics extends CreatureVitals {
   foodCount: number;

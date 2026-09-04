@@ -15,7 +15,11 @@ const CURVE_RELAXATION_PASSES = 2;
 const BIT_FILTER_SCALE = 1 / 6;
 const BIT_LINE_WIDTH = 6;
 const BIT_ALPHA_THRESHOLD = 96;
+// A contour narrower than this is a degenerate plumb line (e.g. a single
+// code line), not an organic curve. Hide it instead of drawing a stray bar.
+const DEGENERATE_AMPLITUDE_PX = 24;
 const CONTOUR_BOTTOM_OVERSHOOT = 12;
+const CONTOUR_TOP_OVERSHOOT = 12;
 const MIN_CONTROL_POINT_GAP = 72;
 const MAX_CONTROL_POINT_GAP = 180;
 const CONTROL_POINT_GAP_RATIO = 0.7;
@@ -279,6 +283,34 @@ function relaxedCurve(points: Point[]) {
   return relaxed;
 }
 
+/** Mirror of the bottom extension: the contour enters from the top edge. */
+export function extendCurveToTop(
+  points: Point[],
+  top: number,
+  maximumX: number
+) {
+  if (points.length === 0) return points;
+
+  const first = points[0];
+  if (top >= first.y) return points.map((point) => ({ ...point }));
+
+  const next = points[Math.min(1, points.length - 1)];
+  const nextHeight = Math.max(1, next.y - first.y);
+  const incomingSlope = clamp(
+    (first.x - next.x) / nextHeight,
+    -0.35,
+    0.35
+  );
+  const extensionHeight = first.y - top;
+  return [
+    {
+      x: clamp(first.x + incomingSlope * extensionHeight * 0.35, 12, maximumX),
+      y: top,
+    },
+    ...points.map((point) => ({ ...point })),
+  ];
+}
+
 function extendCurveToBottom(
   points: Point[],
   bottom: number,
@@ -376,10 +408,18 @@ function measureContour(view: EditorView): ContourMeasurement {
     Math.max(12, width - 12)
   );
   const points = extendCurveToBottom(
-    relaxedCurve(entropySimplifiedContour(signal)),
+    extendCurveToTop(
+      relaxedCurve(entropySimplifiedContour(signal)),
+      -CONTOUR_TOP_OVERSHOOT,
+      Math.max(12, width - 12)
+    ),
     height + CONTOUR_BOTTOM_OVERSHOOT,
     Math.max(12, width - 12)
   );
+
+  if (isDegenerateContour(points)) {
+    return { width, height, points: [], visible: false };
+  }
 
   return {
     // The decorative canvas must not expand the editor's scrollable width.
@@ -388,6 +428,18 @@ function measureContour(view: EditorView): ContourMeasurement {
     points,
     visible: true,
   };
+}
+
+/** True when the contour has no horizontal shape to show. */
+export function isDegenerateContour(points: readonly Point[]): boolean {
+  if (points.length < 2) return true;
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  for (const point of points) {
+    if (point.x < minimum) minimum = point.x;
+    if (point.x > maximum) maximum = point.x;
+  }
+  return maximum - minimum < DEGENERATE_AMPLITUDE_PX;
 }
 
 function documentYAtPosition(view: EditorView, position: number) {
