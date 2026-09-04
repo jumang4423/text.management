@@ -3,7 +3,7 @@ import type { EditorView } from "@codemirror/view";
 import { CodeMirrorHabitat } from "./codemirrorHabitat";
 import { BugWorld } from "./world";
 import type { Vec2 } from "./math";
-import type { RhythmPulse } from "./types";
+import type { PoopSoundKind, RhythmPulse } from "./types";
 
 import "./style.css";
 
@@ -45,7 +45,10 @@ export class LivingCodeBug {
 
   constructor(
     private readonly view: EditorView,
-    private readonly stage: HTMLElement
+    private readonly stage: HTMLElement,
+    private readonly options: {
+      onPoopSound?: (kind: PoopSoundKind) => void;
+    } = {}
   ) {
     this.stage.classList.add("cm-bug-habitat");
     this.canvas.className = "cm-bug-layer";
@@ -66,6 +69,7 @@ export class LivingCodeBug {
     if (!this.habitat || !this.world) {
       this.habitat = new CodeMirrorHabitat(this.view, this.stage);
       this.world = new BugWorld(this.habitat, this.canvas);
+      this.world.onPoopSound = this.options.onPoopSound ?? null;
     } else {
       this.habitat.refreshViewport();
     }

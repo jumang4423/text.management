@@ -29,6 +29,7 @@ import type {
   HabitatAdapter,
   HabitatSnapshot,
   PointerSense,
+  PoopSoundKind,
   RhythmPulse,
 } from "./types";
 
@@ -96,6 +97,7 @@ export class BugWorld {
   autoPulse = false;
   showScent = true;
   onMetrics: ((metrics: BugWorldMetrics) => void) | null = null;
+  onPoopSound: ((kind: PoopSoundKind) => void) | null = null;
 
   private readonly random = new Random(0xb0611fe);
   private readonly droppings: Dropping[] = [];
@@ -622,6 +624,7 @@ export class BugWorld {
       if (targetDistance > TOILET_ARRIVAL_RADIUS) return;
       mission.settled = true;
       mission.arrivedFor = 0;
+      this.onPoopSound?.("wiggle");
     }
 
     mission.arrivedFor += deltaSeconds;
@@ -637,6 +640,7 @@ export class BugWorld {
       rotation: this.random.between(-0.18, 0.18),
       returnProgress: null,
     });
+    this.onPoopSound?.("release");
     agent.poopMission = null;
     const musicAt = performance.now() + POST_POOP_MUSIC_DELAY_MS;
     agent.musicBubbleAt = musicAt;

@@ -1,6 +1,7 @@
 import type { DocumentUpdate, Evaluation, Log } from "@core/api";
 
 import type { SavedStatus } from "./main/filesystem";
+import type { PoopSoundKind } from "@core/extensions/bug/types";
 import { HighlightEvent } from "@management/lang-tidal";
 
 export type Handler<T> = (event: T) => void;
@@ -26,6 +27,7 @@ export interface ToMainChannels {
   browserOpen: { path: string };
   browserPreview: { path: string };
   browserCopy: { value: string };
+  poopSamples: undefined;
 }
 
 export interface ToRendererChannels {
@@ -47,5 +49,6 @@ export interface ToRendererChannels {
   settingsData: any;
   browserTree: BrowserEntry[];
   browserSample: { path: string; mime: string; data: Uint8Array };
+  poopSampleData: { kind: PoopSoundKind; mime: string; data: Uint8Array };
   browserError: string;
 }

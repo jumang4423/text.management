@@ -14,6 +14,7 @@ import { dialog } from "electron";
 // autoUpdater.checkForUpdatesAndNotify();
 
 import { Config } from "@core/state";
+import type { PoopSoundKind } from "@core/extensions/bug/types";
 
 import { GHCI } from "@management/lang-tidal";
 import { Filesystem } from "./filesystem";
@@ -171,6 +172,30 @@ const createWindow = (configuration: Config) => {
           });
         } catch (error) {
           send("browserError", `Could not preview sample: ${error}`);
+        }
+      })
+    );
+    listeners.push(
+      listen("poopSamples", async () => {
+        const funnyDir = resolve(tidalWorkspace, "samples/funny");
+        const entries: { kind: PoopSoundKind; file: string }[] = [
+          { kind: "wiggle", file: "funny25.wav" },
+          { kind: "release", file: "funny26.wav" },
+        ];
+        for (const { kind, file } of entries) {
+          try {
+            const path = resolve(funnyDir, file);
+            if (!isInsideBrowserRoots(path)) {
+              throw new Error("Unsupported sample path");
+            }
+            send("poopSampleData", {
+              kind,
+              mime: audioMime(".wav"),
+              data: new Uint8Array(await readFile(path)),
+            });
+          } catch (error) {
+            send("browserError", `Could not load poop sample: ${error}`);
+          }
         }
       })
     );

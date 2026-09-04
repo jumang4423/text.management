@@ -14,6 +14,7 @@ import {
 } from "../../../../app/desktop/src/renderer/file";
 
 import { ElectronAPI } from "@core/api";
+import type { PoopSoundKind } from "../../bug/types";
 import {
   LivingCodeBug,
   bugHabitatExtension,
@@ -54,7 +55,10 @@ export class EditorTabView extends TabView<EditorState> {
     id: string,
     private api: typeof ElectronAPI,
     config?: EditorStateConfig,
-    bugEnabled = true
+    bugEnabled = true,
+    private hooks: {
+      onPoopSound?: (kind: PoopSoundKind) => void;
+    } = {}
   ) {
     const state = EditorTabState.create(
       bugEnabled
@@ -81,7 +85,9 @@ export class EditorTabView extends TabView<EditorState> {
       },
     });
     this.bug = bugEnabled
-      ? new LivingCodeBug(this.editor, this.dom)
+      ? new LivingCodeBug(this.editor, this.dom, {
+          onPoopSound: this.hooks.onPoopSound,
+        })
       : null;
     if (this.bug) {
       this.bug.setEnabled(isLivingCodeBugVisible());

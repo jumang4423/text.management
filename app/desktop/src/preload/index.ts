@@ -68,6 +68,10 @@ const ElectronAPI = {
 
   previewSample: (path: string) => send("browserPreview", { path }),
 
+  requestPoopSamples: () => send("poopSamples", undefined),
+
+  onPoopSampleData: listen("poopSampleData"),
+
   copyText: (value: string) => send("browserCopy", { value }),
 
   onBrowserTree: listen("browserTree"),

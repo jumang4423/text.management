@@ -11,6 +11,8 @@ export type Behaviour =
   | "toileting"
   | "fleeing";
 
+export type PoopSoundKind = "wiggle" | "release";
+
 export interface EdibleCode {
   id: string;
   from: number;
