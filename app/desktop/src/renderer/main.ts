@@ -26,6 +26,7 @@ import { EditorTabView } from "@core/extensions/layout/tabs/editor";
 import { AboutTabView } from "@core/extensions/layout/tabs/about";
 import { SampleFileBrowser } from "./browser";
 import { PoopSoundPlayer } from "./poop-sounds";
+import { MunchPlayer } from "./munch-sounds";
 import {
   recordTidalCompletionUsage,
   setTidalFunctionCompletions,
@@ -317,12 +318,21 @@ api.onSettingsData((data) => {
 // first poop does not pay the main-process round trip.
 const poopSoundPlayer = new PoopSoundPlayer(api);
 poopSoundPlayer.prefetch();
-// The module-level prefetch can race main-process startup, so retry once the
+const munchPlayer = new MunchPlayer(api);
+munchPlayer.prefetch();
+// The module-level prefetches can race main-process startup, so retry once the
 // window has loaded (main listeners are attached by then). play() also
 // re-requests on every cache miss, so no poop stays silent forever.
-window.addEventListener("load", () => poopSoundPlayer.prefetch(), {
-  once: true,
-});
+window.addEventListener(
+  "load",
+  () => {
+    poopSoundPlayer.prefetch();
+    munchPlayer.prefetch();
+  },
+  {
+    once: true,
+  }
+);
 
 // Color scheme extension
 const colorScheme = new ColorScheme(configuration);
@@ -406,6 +416,7 @@ export class Editor {
                 isTidalDocument,
                 {
                   onPoopSound: (kind) => poopSoundPlayer.play(kind),
+                  onMunch: () => munchPlayer.play(),
                 }
               ),
             },

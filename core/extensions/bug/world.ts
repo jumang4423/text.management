@@ -41,6 +41,7 @@ interface StomachItem {
 interface ChewState {
   foodId: string;
   elapsed: number;
+  munchIn: number;
 }
 
 interface PoopMission {
@@ -80,6 +81,7 @@ const POOP_MIN_SPACING = 96;
 const POOP_ANIMATION_SECONDS = 1;
 const POOP_RETURN_SECONDS = 0.45;
 const CHEW_DURATION_SECONDS = 3;
+const MUNCH_INTERVAL_SECONDS = 0.45;
 
 export interface BugWorldMetrics extends CreatureVitals {
   foodCount: number;
@@ -98,6 +100,7 @@ export class BugWorld {
   showScent = true;
   onMetrics: ((metrics: BugWorldMetrics) => void) | null = null;
   onPoopSound: ((kind: PoopSoundKind) => void) | null = null;
+  onMunch: (() => void) | null = null;
 
   private readonly random = new Random(0xb0611fe);
   private readonly droppings: Dropping[] = [];
@@ -527,7 +530,7 @@ export class BugWorld {
         mouthDistance < 48 * CREATURE_SIZE_SCALE &&
         agent.forageStalledFor > 0.72;
       if (reachedFood || stalledBesideFood) {
-        agent.chew = { foodId: target.id, elapsed: 0 };
+        agent.chew = { foodId: target.id, elapsed: 0, munchIn: 0 };
         this.resetForageProgress(agent);
       }
     } else if (!agent.chew) {
@@ -545,6 +548,14 @@ export class BugWorld {
 
     agent.chew.elapsed += deltaSeconds;
 
+    // Minecraft-style munching: a bite sound on chew start, then one every
+    // MUNCH interval until the chew finishes or is interrupted.
+    agent.chew.munchIn -= deltaSeconds;
+    if (agent.chew.munchIn <= 0) {
+      agent.chew.munchIn += MUNCH_INTERVAL_SECONDS;
+      this.onMunch?.();
+    }
+
     if (agent.chew.elapsed < CHEW_DURATION_SECONDS) return;
     let matter: EatenMatter | null = null;
     if (this.mode === "nibble") matter = this.habitat.eat(chewingFood);
@@ -553,7 +564,7 @@ export class BugWorld {
         matter,
         // The item becomes a toilet mission in this same simulation step.
         // Walking a short distance and the butt animation remain visible, but
-        // there is no hidden digestion pause after the five-second chew.
+        // there is no hidden digestion pause after the chew.
         remaining: 0,
       });
       agent.brain.onEat(matter.nutrition, chewingFood);

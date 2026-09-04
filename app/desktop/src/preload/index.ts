@@ -72,6 +72,10 @@ const ElectronAPI = {
 
   onPoopSampleData: listen("poopSampleData"),
 
+  requestMunchSamples: () => send("munchSamples", undefined),
+
+  onMunchSampleData: listen("munchSampleData"),
+
   copyText: (value: string) => send("browserCopy", { value }),
 
   onBrowserTree: listen("browserTree"),

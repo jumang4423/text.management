@@ -58,6 +58,7 @@ export class EditorTabView extends TabView<EditorState> {
     bugEnabled = true,
     private hooks: {
       onPoopSound?: (kind: PoopSoundKind) => void;
+      onMunch?: () => void;
     } = {}
   ) {
     const state = EditorTabState.create(
@@ -87,6 +88,7 @@ export class EditorTabView extends TabView<EditorState> {
     this.bug = bugEnabled
       ? new LivingCodeBug(this.editor, this.dom, {
           onPoopSound: this.hooks.onPoopSound,
+          onMunch: this.hooks.onMunch,
         })
       : null;
     if (this.bug) {

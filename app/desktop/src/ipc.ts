@@ -28,6 +28,7 @@ export interface ToMainChannels {
   browserPreview: { path: string };
   browserCopy: { value: string };
   poopSamples: undefined;
+  munchSamples: undefined;
 }
 
 export interface ToRendererChannels {
@@ -50,5 +51,6 @@ export interface ToRendererChannels {
   browserTree: BrowserEntry[];
   browserSample: { path: string; mime: string; data: Uint8Array };
   poopSampleData: { kind: PoopSoundKind; mime: string; data: Uint8Array };
+  munchSampleData: { index: number; mime: string; data: Uint8Array };
   browserError: string;
 }

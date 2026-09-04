@@ -4,7 +4,7 @@ import type { PoopSoundKind } from "@core/extensions/bug/types";
 // Playback gain per kind. funny25 (wiggle) plays at 80%, funny26
 // (release) stays at full volume.
 const POOP_GAIN: Record<PoopSoundKind, number> = {
-  wiggle: 0.8,
+  wiggle: 0.6,
   release: 0.9,
 };
 
@@ -13,6 +13,10 @@ const POOP_GAIN: Record<PoopSoundKind, number> = {
 // `samples/funny` bank, so this works without SuperCollider running.
 export class PoopSoundPlayer {
   private readonly sounds = new Map<PoopSoundKind, HTMLAudioElement>();
+  // Events that arrived before their sample (or before the first user
+  // gesture) are replayed instead of dropped, so the first wiggle is
+  // never silent.
+  private readonly pending = new Set<PoopSoundKind>();
   private lastRequestedAt = 0;
   private static readonly REQUEST_THROTTLE_MS = 1_000;
 
@@ -21,6 +25,7 @@ export class PoopSoundPlayer {
     // cached elements on that gesture so later poop events play immediately.
     window.addEventListener("pointerdown", this.unlockOnGesture);
     window.addEventListener("keydown", this.unlockOnGesture);
+    let logged = false;
     this.api.onPoopSampleData(({ kind, mime, data }) => {
       const bytes = data.buffer.slice(
         data.byteOffset,
@@ -37,6 +42,13 @@ export class PoopSoundPlayer {
       }
       audio.volume = POOP_GAIN[kind];
       audio.src = url;
+      if (!logged && this.sounds.size >= 2) {
+        logged = true;
+        console.info("[poop-sounds] samples ready");
+      }
+      if (this.pending.delete(kind)) {
+        this.play(kind);
+      }
     });
   }
 
@@ -57,6 +69,11 @@ export class PoopSoundPlayer {
       }
       audio.volume = volume;
     }
+    // Flush anything that was blocked before the first gesture.
+    for (const kind of [...this.pending]) {
+      this.pending.delete(kind);
+      this.play(kind);
+    }
   };
 
   prefetch() {
@@ -74,15 +91,21 @@ export class PoopSoundPlayer {
   play(kind: PoopSoundKind) {
     const audio = this.sounds.get(kind);
     if (!audio || !audio.src) {
+      this.pending.add(kind);
       this.prefetch();
       return;
     }
     try {
       audio.currentTime = 0;
-      void audio.play().catch(() => {});
+      void audio.play().catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "NotAllowedError") {
+          this.pending.add(kind);
+        }
+      });
     } catch {
-      // Autoplay may be blocked before the first user gesture; the next
-      // poop event will retry once audio is unlocked.
+      // Autoplay may be blocked before the first user gesture; the pending
+      // queue replays it once audio is unlocked.
+      this.pending.add(kind);
     }
   }
 }

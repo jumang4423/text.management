@@ -48,6 +48,7 @@ export class LivingCodeBug {
     private readonly stage: HTMLElement,
     private readonly options: {
       onPoopSound?: (kind: PoopSoundKind) => void;
+      onMunch?: () => void;
     } = {}
   ) {
     this.stage.classList.add("cm-bug-habitat");
@@ -70,6 +71,7 @@ export class LivingCodeBug {
       this.habitat = new CodeMirrorHabitat(this.view, this.stage);
       this.world = new BugWorld(this.habitat, this.canvas);
       this.world.onPoopSound = this.options.onPoopSound ?? null;
+      this.world.onMunch = this.options.onMunch ?? null;
     } else {
       this.habitat.refreshViewport();
     }
