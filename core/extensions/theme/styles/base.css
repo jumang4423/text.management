@@ -157,6 +157,13 @@ body {
 
 .cm-sample-emoji-token[data-sample-image]::before {
   content: "";
+  top: 50%;
+  bottom: auto;
+  left: var(--sample-emoji-name-center, 50%);
+  width: var(--sample-emoji-image-width, 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
   background-image: var(--sample-emoji-image);
   background-size: contain;
   background-repeat: no-repeat;

@@ -722,6 +722,7 @@
     "completionName": "strudelSine"
   },
   "mc": {
-    "image": "./images/mc.png"
+    "image": "./images/mc.png",
+    "scale": 4
   }
 }

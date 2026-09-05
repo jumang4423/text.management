@@ -123,6 +123,11 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
           const imageClass = hasImage ? " cm-sample-image-token" : "";
           const emojiSize =
             sample.length * emojiSizeMultiplier * (definition.scale ?? 1);
+          // Image box width as % of the token so CSS `ch` units don't compound
+          // against the already-enlarged ::before font size.
+          const imageBoxWidth = hasImage
+            ? (emojiSize / (sample.length + suffix.length)) * 100
+            : 0;
           const decoration = Decoration.mark({
             class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}${imageClass}`,
             attributes: {
@@ -135,7 +140,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
               title: isUserSynthEmoji(definition)
                 ? `${sample} (user synth)`
                 : sample,
-              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%; --sample-emoji-name-center: ${(nameWidth / 2).toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}")` : ""}`,
+              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%; --sample-emoji-name-center: ${(nameWidth / 2).toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}`,
             },
           });
           decorations.push(
