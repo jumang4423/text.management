@@ -28,6 +28,7 @@ function listen<K extends keyof ToRendererChannels>(channel: K) {
 export type { ElectronAPI };
 
 const ElectronAPI = {
+  rendererReady: () => send("rendererReady", undefined),
   setCurrent(id: string | null) {
     send("current", { id });
   },

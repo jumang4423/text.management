@@ -78,7 +78,9 @@ body {
 .cm-sample-emoji-token {
   display: inline-block;
   position: relative;
-  margin-inline: var(--sample-emoji-layout-shift, 0ch);
+  width: var(--sample-emoji-token-width);
+  margin-inline: var(--sample-emoji-gap, 0ch);
+  white-space: nowrap;
   color: transparent !important;
   transform-origin: 50% 90%;
   background: none !important;
@@ -115,16 +117,19 @@ body {
   text-shadow: none !important;
 }
 
+/* Images and emoji share one centered visual box and the same clearance.
+   Size the box in percentages of the code token, never in the emoji font's ch. */
 .cm-sample-emoji-token::before {
   content: attr(data-sample-emoji);
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  top: 50%;
+  left: var(--sample-emoji-name-center, 50%);
   display: flex;
-  width: var(--sample-emoji-name-width, 100%);
+  width: var(--sample-emoji-image-width, 100%);
+  aspect-ratio: 1;
   align-items: center;
   justify-content: center;
+  transform: translate(-50%, -50%);
   color: initial;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Departure Mono", sans-serif;
   font-size: var(--sample-emoji-size, 1em);
@@ -137,13 +142,14 @@ body {
   content: attr(data-sample-suffix);
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 0;
-  left: var(--sample-emoji-name-width, 100%);
+  /* The index owns the right-hand column, outside the image. */
+  right: 0;
   display: flex;
   align-items: center;
   color: var(--color-syntax-string);
   font: inherit;
+  white-space: nowrap;
   text-shadow: var(--sample-emoji-shadow, none);
   pointer-events: none;
 }
@@ -152,8 +158,8 @@ body {
   top: 50%;
   bottom: auto;
   left: var(--sample-emoji-name-center, 50%);
-  width: calc(var(--sample-emoji-size, 1em) * 1.15);
-  height: calc(var(--sample-emoji-size, 1em) * 1.15);
+  width: var(--sample-emoji-image-width, 100%);
+  height: auto;
   animation: none;
   background: none;
   color: initial !important;

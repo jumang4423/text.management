@@ -65,7 +65,7 @@ export class EditorTabView extends TabView<EditorState> {
       bugEnabled
         ? {
             ...config,
-            extensions: [config?.extensions ?? [], bugHabitatExtension],
+            extensions: [config?.extensions ?? [], EditorView.lineWrapping, bugHabitatExtension],
           }
         : config,
       id

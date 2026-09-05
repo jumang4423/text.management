@@ -1,6 +1,7 @@
 import definitions from "./sample-emojis.json";
 
 import mcImageUrl from "./images/mc.png";
+import funnyImageUrl from "./images/funny.png";
 
 export interface SampleEmojiDefinition {
   emoji?: string;
@@ -15,6 +16,7 @@ export interface SampleEmojiDefinition {
 // local image is added under ./images/.
 const bundledSampleImageUrls: Record<string, string> = {
   "./images/mc.png": mcImageUrl,
+  "./images/funny.png": funnyImageUrl,
 };
 
 const sampleEmojiDefinitions = definitions as Record<

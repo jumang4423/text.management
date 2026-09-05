@@ -721,6 +721,9 @@
     "source": "user-synth",
     "completionName": "strudelSine"
   },
+  "funny": {
+    "image": "./images/funny.png"
+  },
   "mc": {
     "image": "./images/mc.png"
   }

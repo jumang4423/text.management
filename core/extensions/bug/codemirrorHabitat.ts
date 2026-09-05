@@ -140,7 +140,8 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     const worldWidth = Math.max(
       scroll.clientWidth,
       scroll.scrollWidth,
-      contentX + this.view.state.doc.length * this.view.defaultCharacterWidth * 0.03
+      this.view.lineWrapping ? scroll.clientWidth :
+        contentX + this.view.state.doc.length * this.view.defaultCharacterWidth * 0.03
     );
     const worldHeight = Math.max(
       scroll.clientHeight,
@@ -150,9 +151,10 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       this.view.state.selection.main.head
     );
     const activeLineBlock = this.view.lineBlockAt(activeLine.from);
+    const cursorRect = this.view.coordsAtPos(this.view.state.selection.main.head);
     const activeLineRect: Rect = {
       x: contentX,
-      y: activeLineBlock.top,
+      y: cursorRect ? cursorRect.top - scrollRect.top + scroll.scrollTop : activeLineBlock.top,
       width: Math.max(
         120,
         Math.min(
@@ -160,7 +162,7 @@ export class CodeMirrorHabitat implements HabitatAdapter {
           activeLine.length * this.view.defaultCharacterWidth
         )
       ),
-      height: Math.max(this.view.defaultLineHeight, activeLineBlock.height),
+      height: cursorRect ? cursorRect.bottom - cursorRect.top : this.view.defaultLineHeight,
     };
 
     while (
@@ -180,7 +182,7 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       canvasOffsetX: scrollRect.left - stageRect.left,
       canvasOffsetY: scrollRect.top - stageRect.top,
       activeLineRect,
-      edibles: this.extractEdibles(now, contentX),
+      edibles: this.extractEdibles(now),
     };
     this.lastSnapshot = snapshot;
     this.lastSnapshotAt = now;
@@ -313,29 +315,46 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     this.refreshViewport();
   };
 
-  private extractEdibles(now: number, contentX: number) {
+  private extractEdibles(now: number) {
     const foods: EdibleCode[] = [];
     const doc = this.view.state.doc;
-    const characterWidth = this.view.defaultCharacterWidth;
-    const lineHeight = this.view.defaultLineHeight;
-
-    for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
+    const scroll = this.view.scrollDOM;
+    const scrollRect = scroll.getBoundingClientRect();
+    // Only rendered text has reliable geometry. Never invent offscreen food
+    // positions from source columns when lines wrap or contain image tokens.
+    const lineNumbers = new Set<number>();
+    for (const visible of this.view.visibleRanges) {
+      const last = doc.lineAt(visible.to).number;
+      for (let number = doc.lineAt(visible.from).number; number <= last; number++) {
+        lineNumbers.add(number);
+      }
+    }
+    for (const lineNumber of lineNumbers) {
       const line = doc.line(lineNumber);
-      const ranges = this.rangesForLine(line.text, line.from);
-      const lineBlock = this.view.lineBlockAt(line.from);
-
-      for (const range of ranges) {
+      for (const range of this.rangesForLine(line.text, line.from)) {
+        if (!this.view.visibleRanges.some((visible) =>
+          range.from >= visible.from && range.to <= visible.to
+        )) continue;
         const text = doc.sliceString(range.from, range.to);
-        if (text.trim().length === 0) continue;
-        if (isTidalFoodBlacklisted(text, range.kind)) continue;
-        const startColumn = range.from - line.from;
-        const length = Math.max(1, range.to - range.from);
+        if (!text.trim() || isTidalFoodBlacklisted(text, range.kind)) continue;
+        const start = this.view.domAtPos(range.from);
+        const end = this.view.domAtPos(range.to);
+        const domRange = this.view.dom.ownerDocument.createRange();
+        domRange.setStart(start.node, start.offset);
+        domRange.setEnd(end.node, end.offset);
+        // A modifier can span wrapped rows. Aim at its largest real fragment,
+        // not the empty space inside a rectangle enclosing multiple rows.
+        const fragments = Array.from(domRange.getClientRects())
+          .filter((rect) => rect.width > 0 && rect.height > 0);
+        const bounds = fragments.sort((a, b) => b.width - a.width)[0];
+        if (!bounds) continue;
         const rect: Rect = {
-          x: contentX + startColumn * characterWidth,
-          y: lineBlock.top + lineHeight * 0.08,
-          width: Math.max(characterWidth * 0.8, length * characterWidth),
-          height: lineHeight * 0.84,
+          x: bounds.left - scrollRect.left + scroll.scrollLeft,
+          y: bounds.top - scrollRect.top + scroll.scrollTop,
+          width: bounds.width,
+          height: bounds.height,
         };
+        const length = range.to - range.from;
         const heat = this.heatForRange(range.from, range.to, now);
         const kindNutrition = range.kind === "modifier" ? 0.72 : 0.68;
         foods.push({

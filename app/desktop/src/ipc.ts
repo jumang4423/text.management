@@ -16,6 +16,7 @@ export interface BrowserEntry {
 }
 
 export interface ToMainChannels {
+  rendererReady: undefined;
   current: { id: string | null };
   update: { withID: string; value: DocumentUpdate };
   requestClose: { id: string };

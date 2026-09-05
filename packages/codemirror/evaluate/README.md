@@ -24,7 +24,8 @@ let view = new EditorView({
 });
 ```
 
-By default, this creates two keyboard shortcuts:
+By default, this creates three keyboard shortcuts:
 
-- **Shift+Enter**: Evaluate the current line
+- **Shift+Enter**: Send `dn $ silence` for the current blank-line-delimited block, without editing its text. Does nothing on blank lines or if the block has no unique `dn $` target. Strings and comments are ignored.
 - **Ctrl+Enter (Cmd+Enter on Mac)**: Evaluate the current block of lines separated by blank lines
+- **Ctrl+. (Cmd+. on Mac)**: Stop all patterns with `hush`

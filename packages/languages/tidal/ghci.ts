@@ -51,7 +51,7 @@ export class GHCI extends Engine<GHCIEvents> {
     this.settings = settings.extend(TidalSettingsSchema);
 
     this.settings.on("change", () => {
-      this.reloadSettings;
+      void this.reloadSettings();
     });
 
     this.version = "Unknown";
@@ -447,37 +447,29 @@ class ProcessWrapper extends EventEmitter<ProcessWrapperEvents> {
   }
 
   public async *send(code: string) {
-    let resolve = () => {};
+    const previous = this.runningProcess;
+    let release!: () => void;
+    const queued = new Promise<void>((resolve) => { release = resolve; });
+    // Reserve our place before awaiting: rapid evaluations must not share
+    // the same prompt or run concurrently after the previous request ends.
+    this.runningProcess = queued;
 
-    if (this.runningProcess !== null) {
-      await this.runningProcess;
+    try {
+      if (previous) await previous;
+      for (let statement of extractStatements(code)) {
+        for (let filter of this.inputFilters) {
+          statement = statement.replaceAll(filter, "");
+        }
+        if (/^\s*$/.test(statement)) continue;
+        if (statement.split(EOL).length > 1) {
+          statement = `:{${EOL}${statement}${EOL}:}`;
+        }
+        yield await this.evaluate(statement);
+      }
+    } finally {
+      if (this.runningProcess === queued) this.runningProcess = null;
+      release();
     }
-
-    this.runningProcess = new Promise<void>((res) => {
-      resolve = res;
-    }).then(() => {
-      this.runningProcess = null;
-    });
-
-    for (let statement of extractStatements(code)) {
-      for (let filter of this.inputFilters) {
-        statement = statement.replaceAll(filter, "");
-      }
-
-      // Check for empty statements post-filter
-      if (/^\s*$/.test(statement)) {
-        console.log("BREAK");
-        continue;
-      }
-
-      if (statement.split(EOL).length > 1) {
-        statement = `:{${EOL}${statement}${EOL}:}`;
-      }
-
-      yield this.evaluate(statement);
-    }
-
-    resolve();
   }
 
   public addInputFilter(filter: RegExp) {

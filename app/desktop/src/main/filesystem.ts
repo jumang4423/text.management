@@ -30,6 +30,8 @@ interface DocumentState {
 export class DesktopDocument extends EventEmitter<DocumentEvents> {
   fileStatus: FileStatus = { path: null, version: null, saved: false };
   content: DocumentState | null = null;
+  readonly ready: Promise<boolean>;
+  loadError: unknown = null;
 
   get path() {
     return this.fileStatus.path;
@@ -46,7 +48,7 @@ export class DesktopDocument extends EventEmitter<DocumentEvents> {
 
     // Then check if the document has been edited
     return this.fileStatus.version === this.content?.version
-      ? !this.fileStatus.saved
+      ? this.fileStatus.saved !== true
       : true;
   }
 
@@ -87,53 +89,46 @@ export class DesktopDocument extends EventEmitter<DocumentEvents> {
       }
     };
 
-    loadContent();
+    this.ready = loadContent().then(
+      () => true,
+      (error: unknown) => {
+        this.loadError = error;
+        return false;
+      }
+    );
   }
 
-  private saveQueue: Map<string, DocumentState> = new Map();
+  private saveQueue: Promise<void> = Promise.resolve();
 
   async save(newPath: string | null = null) {
-    let { path, version } = this.fileStatus;
-    path = newPath ?? path;
-
-    let content = this.content;
-
-    if (version === null || content === null)
-      throw Error("Can't save an unloaded document.");
-
+    const path = newPath ?? this.fileStatus.path;
+    const content = this.content;
+    if (!content) throw Error("Can't save an unloaded document.");
     if (path === null) throw Error("Can't save a document with no path.");
 
-    let fileStatus: SavedStatus = { path, version, saved: "saving" };
-    this.fileStatus = fileStatus;
-    this.emit("status", fileStatus);
+    const { doc, version } = content;
+    this.fileStatus = { path, version, saved: "saving" };
+    this.emit("status", this.fileStatus as SavedStatus);
 
-    // Get the previous save for this file path
-    let currentSave = this.saveQueue.get(path);
-
-    // If there's a currently-active save, then queue this one and exit
-    if (currentSave) {
-      if (content.version > currentSave.version) {
-        this.saveQueue.set(path, content);
+    // Reserve the queue before yielding. Every caller awaits its own write,
+    // and a failed write does not prevent later saves from running.
+    const operation = this.saveQueue.then(async () => {
+      try {
+        await writeFile(path, doc.sliceString(0));
+      } catch (error) {
+        if (this.fileStatus.path === path && this.fileStatus.version === version) {
+          this.fileStatus = { path, version, saved: false };
+          this.emit("status", this.fileStatus as SavedStatus);
+        }
+        throw error;
       }
-      return;
-    }
-
-    currentSave = content;
-
-    // Process saves
-    while (currentSave) {
-      let doc: Text;
-      ({ doc, version } = currentSave);
-      await writeFile(path, doc.sliceString(0));
-      currentSave = this.saveQueue.get(path);
-      this.saveQueue.delete(path);
-    }
-
-    if (this.fileStatus.path === path) {
-      fileStatus = { path, version, saved: true };
-      this.fileStatus = fileStatus;
-      this.emit("status", fileStatus);
-    }
+      if (this.fileStatus.path === path && this.fileStatus.version === version) {
+        this.fileStatus = { path, version, saved: true };
+        this.emit("status", this.fileStatus as SavedStatus);
+      }
+    });
+    this.saveQueue = operation.catch(() => {});
+    await operation;
   }
 
   update(update: DocumentUpdate) {

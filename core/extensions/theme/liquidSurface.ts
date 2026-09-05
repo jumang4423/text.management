@@ -406,14 +406,14 @@ class LiquidEditorSurface {
     const base = scroller.getBoundingClientRect();
     const scaleX = this.view.scaleX || 1;
     const scaleY = this.view.scaleY || 1;
-    const shapes = {
+    const shapes: Record<SurfaceKind, SurfaceShape[]> = {
       body: [],
       selection: [],
       evaluated: [],
       error: [],
       search: [],
       bracket: [],
-    } satisfies Record<SurfaceKind, SurfaceShape[]>;
+    };
     const seen = new Map<SurfaceKind, Set<string>>();
     (Object.keys(shapes) as SurfaceKind[]).forEach((kind) => seen.set(kind, new Set()));
 

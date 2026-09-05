@@ -280,6 +280,7 @@ window.addEventListener("load", () => {
   const parent = document.body.appendChild(document.createElement("section"));
   parent.id = "editor";
   new Editor(parent);
+  api.rendererReady();
 });
 
 const { api } = window as Window &

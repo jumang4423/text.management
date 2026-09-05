@@ -23,8 +23,7 @@ import {
 } from "./sample-emoji-config";
 import {
   emojiSizeFor,
-  imageBoxWidthPct,
-  sampleLayoutShiftCh,
+  sampleEmojiGapCh,
 } from "./sample-image-layout";
 
 const sampleNameCharacter = /[A-Za-z0-9_-]/;
@@ -96,7 +95,6 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
             .slice(relativeFrom + sample.length)
             .match(/^:-?\d+/)?.[0] ?? "";
           const relativeTo = relativeFrom + sample.length + suffix.length;
-          const nameWidth = (sample.length / (sample.length + suffix.length)) * 100;
           const highlight = latestHighlightForSample(
             highlights,
             mini.id,
@@ -106,7 +104,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
           );
           const motion =
             highlight !== null && !tidalReducedMotion.matches
-              ? textReactionMotion(highlight, now, 0, emojiScaleRange)
+              ? textReactionMotion(highlight, now, 0, emojiScaleRange, 2.25)
               : { transform: "none", textShadow: "none" };
           const activeClass =
             motion.transform === "none" ? "" : " cm-sample-emoji-active";
@@ -127,27 +125,12 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
           const imageClass = hasImage ? " cm-sample-image-token" : "";
           const scale = definition.scale ?? 1;
           const emojiSize = emojiSizeFor(scale);
-          const imageBoxWidth = hasImage
-            ? imageBoxWidthPct(sample.length, suffix.length, scale)
-            : 0;
-          // Symmetric layout shift (in ch, signed) so every token occupies
-          // the unified size minus the gap: short names push neighbours
-          // aside, long names pull them in.
-          const layoutShift = sampleLayoutShiftCh(
-            sample.length,
-            suffix.length,
-            scale
-          );
-          // Background highlight spans the visual width, not the text width.
-          const highlightWidth = imageBoxWidthPct(
-            sample.length,
-            suffix.length,
-            scale
-          );
-          // The shift is symmetric, so the whole token's center is the anchor.
-          const nameCenter = hasImage
-            ? 50
-            : (sample.length / (sample.length + suffix.length)) * 50;
+          // Explicitly reserve separate visual and index columns. Hidden source
+          // name length must not determine where either column or *operators sit.
+          const suffixGap = 0;
+          const tokenWidth = emojiSize + suffixGap + suffix.length;
+          const imageBoxWidth = (emojiSize / tokenWidth) * 100;
+          const nameCenter = imageBoxWidth / 2;
           const decoration = Decoration.mark({
             class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}${imageClass}`,
             attributes: {
@@ -160,7 +143,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
               title: isUserSynthEmoji(definition)
                 ? `${sample} (user synth)`
                 : sample,
-              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-layout-shift: ${layoutShift.toFixed(3)}ch; --sample-emoji-highlight-width: ${highlightWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}`,
+              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-token-width: ${tokenWidth.toFixed(3)}ch; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-gap: ${sampleEmojiGapCh}ch; --sample-emoji-highlight-width: ${imageBoxWidth.toFixed(3)}%; --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}`,
             },
           });
           decorations.push(

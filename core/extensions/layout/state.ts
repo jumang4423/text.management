@@ -77,7 +77,8 @@ export class LayoutState {
       }
     }
 
-    return new LayoutState(tabs, order, tr.current ?? current);
+    const requested = tr.current ?? current;
+    return new LayoutState(tabs, order, requested && tabs[requested] ? requested : current);
   }
 }
 

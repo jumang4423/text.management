@@ -5,15 +5,15 @@
 // names (e.g. "industrial") no longer dwarf short ones (e.g. "mc").
 export const sampleEmojiFixedSize = 6.0;
 
-// Per-side tightening so adjacent visuals sit closer together.
-export const sampleEmojiGapCh = 0.5;
+// Positive per-side clearance shared by images and emoji.
+export const sampleEmojiGapCh = 0;
 
 export function emojiSizeFor(scale = 1) {
   return sampleEmojiFixedSize * scale;
 }
 
 // Per-side layout shift (in ch, signed) so the token occupies the unified
-// size minus the gap: short names push neighbours aside, long names pull
+// size plus the gap: short names push neighbours aside, long names pull
 // them in. Resolves against the token's own (normal) font size, so unlike
 // `ch` on the enlarged ::before it never compounds.
 export function sampleLayoutShiftCh(
@@ -23,7 +23,7 @@ export function sampleLayoutShiftCh(
 ) {
   const textLength = sampleLength + suffixLength;
   if (textLength <= 0) return 0;
-  return (emojiSizeFor(scale) - textLength) / 2 - sampleEmojiGapCh;
+  return (emojiSizeFor(scale) - textLength) / 2 + sampleEmojiGapCh;
 }
 
 // Visual width (image box, highlight) as % of the token's content box.

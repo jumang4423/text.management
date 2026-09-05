@@ -19,6 +19,7 @@ import { playDirtSample } from "./dirt";
 import { GHCI } from "@management/lang-tidal";
 import { Filesystem } from "./filesystem";
 import { wrapIPC } from "./ipcMain";
+import { connectDocuments } from "./documentSession";
 
 import { menu } from "./menu";
 import type { BrowserEntry } from "../ipc";
@@ -63,10 +64,11 @@ const createWindow = (configuration: Config) => {
   });
 
   let listeners: (() => void)[] = [];
-  let docsListeners: { [id: string]: typeof listeners } = {};
 
-  window.on("ready-to-show", () => {
+  {
     const [send, listen] = wrapIPC(window.webContents);
+    let tidalVersion = "Unknown";
+    let tidalCompletions: string[] = [];
 
     listeners.push(
       listen("current", ({ id }) => {
@@ -80,47 +82,8 @@ const createWindow = (configuration: Config) => {
       })
     );
 
-    // Attach file handlers
-    listeners.push(
-      filesystem.on("open", (document) => {
-        let { id, path, content, fileStatus } = document;
-        let { saved } = fileStatus;
-
-        let docListeners: typeof listeners = [];
-        docsListeners[id] = docListeners;
-
-        send("open", { id, path });
-
-        if (content) {
-          let { doc, version } = content;
-          send("content", {
-            withID: id,
-            content: { doc: doc.toJSON(), version, saved },
-          });
-        } else {
-          document.once("loaded", (content) => {
-            send("content", {
-              withID: id,
-              content: { ...content, doc: content.doc.toJSON() },
-            });
-          });
-        }
-
-        docListeners.push(
-          document.on("status", (status) => {
-            send("status", { withID: id, content: status });
-          })
-        );
-
-        docListeners.push(
-          listen("update", ({ withID, value }) => {
-            if (withID === id) {
-              document.update(value);
-            }
-          })
-        );
-      })
-    );
+    const documents = connectDocuments(filesystem, send, listen);
+    listeners.push(documents.dispose);
 
     listeners.push(
       filesystem.on("setCurrent", (id) => {
@@ -182,7 +145,7 @@ const createWindow = (configuration: Config) => {
         if (kind === "wiggle") {
           playDirtSample({ sound: "funny", n: 24, gain: 0.85 });
         } else {
-          playDirtSample({ sound: "funny", n: 25, gain: 0.9 });
+          playDirtSample({ sound: "funny", n: 25, gain: 0.99 });
         }
       })
     );
@@ -204,12 +167,14 @@ const createWindow = (configuration: Config) => {
     // Set up tidal communication
     listeners.push(
       tidal.on("version", (version) => {
+        tidalVersion = version;
         send("tidalVersion", version);
       })
     );
 
     listeners.push(
       tidal.on("completions", (completions) => {
+        tidalCompletions = completions;
         send("tidalCompletions", completions);
       })
     );
@@ -270,15 +235,22 @@ const createWindow = (configuration: Config) => {
       })
     );
 
-    send("settingsData", configuration.data);
-    void sendBrowserTree();
+    listeners.push(listen("rendererReady", () => {
+      void documents.restore();
+      send("settingsData", configuration.data);
+      send("tidalVersion", tidalVersion);
+      send("tidalCompletions", tidalCompletions);
+      void sendBrowserTree();
+    }));
     listeners.push(
       configuration.on("change", (data) => {
         send("settingsData", data);
       })
     );
 
-    // Show the window
+  }
+
+  window.once("ready-to-show", () => {
     window.maximize();
     window.show();
   });
@@ -307,13 +279,6 @@ const createWindow = (configuration: Config) => {
       listener();
     }
     listeners = [];
-
-    for (let docListeners of Object.values(docsListeners)) {
-      for (let listener of docListeners) {
-        listener();
-      }
-    }
-    docsListeners = {};
 
     tidal.close();
   });
@@ -400,7 +365,19 @@ function audioMime(extension: string) {
   );
 }
 
+const ownsInstance = app.requestSingleInstanceLock();
+if (!ownsInstance) app.quit();
+app.on("second-instance", () => {
+  const window = BrowserWindow.getAllWindows()[0];
+  if (window) {
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  }
+});
+
 app.whenReady().then(async () => {
+  if (!ownsInstance) return;
   if (process.platform === "darwin") {
     app.dock.setIcon(resolve(app.getAppPath(), "resources/icon.png"));
   }
@@ -451,27 +428,35 @@ async function openFile(window?: BrowserWindow) {
 
 menu.on("saveFile", saveFile);
 async function saveFile(window?: BrowserWindow) {
-  if (window) {
-    if (filesystem.currentDoc) {
-      if (filesystem.currentDoc.path === null) {
-        saveAsFile(window);
-      } else {
-        filesystem.currentDoc.save();
-      }
-    }
+  if (!window) return;
+  const document = filesystem.currentDoc;
+  if (!document) return;
+  if (document.path === null) {
+    await saveAsFile(window);
+    return;
+  }
+  try {
+    await document.save();
+  } catch (error) {
+    await dialog.showMessageBox(window, {
+      type: "error", message: "Could not save file", detail: String(error),
+    });
   }
 }
 
 menu.on("saveAsFile", saveAsFile);
 async function saveAsFile(window?: BrowserWindow) {
-  if (window) {
-    let result = await dialog.showSaveDialog(window);
-
+  if (!window) return;
+  const document = filesystem.currentDoc;
+  if (!document) return;
+  try {
+    const result = await dialog.showSaveDialog(window);
     if (result.canceled || !result.filePath) return;
-
-    if (filesystem.currentDoc) {
-      filesystem.currentDoc.save(result.filePath);
-    }
+    await document.save(result.filePath);
+  } catch (error) {
+    await dialog.showMessageBox(window, {
+      type: "error", message: "Could not save file", detail: String(error),
+    });
   }
 }
 
@@ -510,12 +495,14 @@ async function close({ window, id }: CloseOptions) {
     // Save
     if (response === 0) {
       if (document.path) {
-        document.save();
+        await document.save();
       } else {
         let { canceled, filePath } = await dialog.showSaveDialog(window);
 
         if (!canceled && filePath) {
-          document.save(filePath);
+          await document.save(filePath);
+        } else {
+          return;
         }
       }
     }
@@ -556,7 +543,7 @@ async function closeAll(window?: BrowserWindow) {
       for (let doc of docs) {
         if (doc.needsSave) {
           if (doc.path !== null) {
-            doc.save();
+            await doc.save();
           } else {
             filesystem.currentDocID = doc.id;
             let { canceled, filePath } = await dialog.showSaveDialog(window);
