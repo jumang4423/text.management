@@ -9,3 +9,8 @@ declare module "jsx:*.svg" {
   const value: (props: JSX.SVGAttributes) => VNode;
   export default value;
 }
+
+declare module "*.png" {
+  const value: string;
+  export default value;
+}

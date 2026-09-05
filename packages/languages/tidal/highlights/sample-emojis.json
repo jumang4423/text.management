@@ -720,5 +720,8 @@
     "emoji": "💿",
     "source": "user-synth",
     "completionName": "strudelSine"
+  },
+  "mc": {
+    "image": "./images/mc.png"
   }
 }

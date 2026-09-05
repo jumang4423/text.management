@@ -7,13 +7,16 @@ jest.mock("./sample-emojis.json", () => ({
       source: "user-synth",
       completionName: "strudelSine",
     },
+    mc: { image: "./images/mc.png" },
   },
 }));
 
 import {
+  hasSampleImage,
   isUserSynthEmoji,
   sampleEmojiDefinition,
   sampleEmojiForName,
+  sampleImageUrlForName,
   userSynthNames,
 } from "./sample-emoji-config";
 
@@ -32,5 +35,17 @@ describe("sample emoji definitions", () => {
 
     expect(definition).toBeDefined();
     expect(definition && isUserSynthEmoji(definition)).toBe(false);
+  });
+
+  test("resolves an image-only sample without an emoji fallback", () => {
+    const definition = sampleEmojiDefinition("mc");
+
+    expect(definition).toEqual({ image: "./images/mc.png" });
+    expect(sampleEmojiForName("mc")).toBeUndefined();
+    expect(hasSampleImage("mc")).toBe(true);
+    expect(hasSampleImage("bd")).toBe(false);
+    // Bundled via __mocks__/file.ts in Jest.
+    expect(sampleImageUrlForName("mc")).toBe("test-file-stub");
+    expect(sampleImageUrlForName("bd")).toBeUndefined();
   });
 });

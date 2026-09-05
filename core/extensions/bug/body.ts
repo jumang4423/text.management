@@ -75,7 +75,10 @@ export interface CaterpillarLeg {
 }
 
 export interface CaterpillarBodyOptions {
+  /** Total body nodes, including the face at index 0. At least two. */
   segmentCount?: number;
+  /** Torso indices with left/right leg pairs. Defaults to every torso node. */
+  legPairNodes?: readonly number[];
   segmentLength?: number;
   radius?: number;
   randomSeed?: number;
@@ -183,11 +186,30 @@ export class CaterpillarBody {
     origin: Vec2,
     {
       segmentCount = 5,
+      legPairNodes,
       segmentLength = 32 * CREATURE_SIZE_SCALE,
       radius = 13 * CREATURE_SIZE_SCALE,
       randomSeed = 0xb067a11,
     }: CaterpillarBodyOptions = {}
   ) {
+    if (!Number.isInteger(segmentCount) || segmentCount < 2) {
+      throw new RangeError("segmentCount must be an integer of at least 2");
+    }
+    const legNodes = legPairNodes ?? Array.from(
+      { length: segmentCount - 1 },
+      (_, index) => index + 1
+    );
+    if (
+      legNodes.length === 0 ||
+      new Set(legNodes).size !== legNodes.length ||
+      legNodes.some(
+        (index) => !Number.isInteger(index) || index < 1 || index >= segmentCount
+      )
+    ) {
+      throw new RangeError(
+        "legPairNodes must contain one or more unique torso indices (1 to segmentCount - 1)"
+      );
+    }
     this.segmentLength = segmentLength;
     this.baseRadius = radius;
     this.gaitRandom = new Random(randomSeed);
@@ -210,11 +232,8 @@ export class CaterpillarBody {
     this.tractionVelocity = this.nodes.map(() => ({ x: 0, y: 0 }));
     this.resetHeadTrail();
 
-    // Every white torso disc owns a left/right pair. The grey head stays bare.
-    const legNodes = Array.from(
-      { length: Math.max(0, segmentCount - 1) },
-      (_, index) => index + 1
-    );
+    // Selected torso discs own left/right pairs. The grey head stays bare.
+    // Preserve pair order so the original layout keeps its seeded leg poses.
     for (const [pairIndex, nodeIndex] of legNodes.entries()) {
       for (const side of [-1, 1] as const) {
         const sequence = ((nodeIndex * 3 + (side > 0 ? 2 : 0)) % 7) / 6;
@@ -437,11 +456,11 @@ export class CaterpillarBody {
     this.updateOrganicTissue(deltaSeconds, locomotionPaused);
     this.solveBodyShape(bounds, 6);
     // Apply the recorded head path after the straightening constraints. This
-    // leaves a visible shallow arc for the four rear discs instead of having
+    // leaves a visible shallow arc for the rear discs instead of having
     // the solver erase the bend immediately.
     if (!locomotionPaused) this.applyHeadTrailShape(deltaSeconds, bounds);
     // Never release the other support group while any hand is already airborne.
-    // One complete diagonal group of four planted hands is the invariant.
+    // One complete alternating group (half of the legs) stays planted.
     const hasAirborneHand = this.legs.some(
       (leg) => leg.mode !== "stance" || leg.swingQueued
     );
@@ -602,7 +621,7 @@ export class CaterpillarBody {
     }
     if (locomotionActivity > 0.04) this.stepGroupAge += deltaSeconds;
 
-    // The active diagonal group first reaches fixed targets in the route direction.
+    // The active step group first reaches fixed targets in the route direction.
     // Only touchdown and completed pulling advance the two-group sequence.
     for (const leg of this.legs) {
       if (leg.swingQueued) {
@@ -1186,7 +1205,7 @@ export class CaterpillarBody {
   private routeDirectionAt(nodeIndex: number, headForward: Vec2): Vec2 {
     const localTangent = this.tangentAt(nodeIndex);
     const bodyProgress = nodeIndex / Math.max(1, this.nodes.length - 1);
-    // Steering is phase-delayed across all four torso discs. Each successive
+    // Steering is phase-delayed across the torso discs. Each successive
     // pair inherits less of the head's new bearing and more of its local curve.
     const headInfluence =
       bodyProgress <= 0.26
@@ -1668,7 +1687,7 @@ export class CaterpillarBody {
     for (const { leg } of overloaded) {
       if (supportCount <= minimumSupport) break;
       // Let the most overloaded hand go first, but retain at least one complete
-      // four-hand support set. No body coordinate is rewound or teleported.
+      // support group. No body coordinate is rewound or teleported.
       this.beginSwing(
         leg,
         this.stepDirectionForLeg(leg, headForward),

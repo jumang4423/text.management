@@ -155,6 +155,16 @@ body {
   filter: none;
 }
 
+.cm-sample-emoji-token[data-sample-image]::before {
+  content: "";
+  background-image: var(--sample-emoji-image);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  text-shadow: none;
+}
+
 .cm-livecode-active-event {
   display: inline-block;
   transform-origin: 50% 90%;

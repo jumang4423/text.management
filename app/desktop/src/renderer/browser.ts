@@ -1,6 +1,9 @@
 import type { ElectronAPI } from "../preload";
 import type { BrowserEntry } from "../ipc";
-import { sampleEmojiForName } from "@management/lang-tidal/highlights/sample-emoji-config";
+import {
+  sampleEmojiForName,
+  sampleImageUrlForName,
+} from "@management/lang-tidal/highlights/sample-emoji-config";
 
 import "./browser.css";
 
@@ -203,8 +206,18 @@ export class SampleFileBrowser {
       const details = document.createElement("details");
       details.open = entry.openByDefault ?? depth === 0;
       const summary = details.appendChild(document.createElement("summary"));
-      const emoji = sampleEmojiForName(entry.name);
-      summary.textContent = emoji ? `${emoji} ${entry.name}` : entry.name;
+      const imageUrl = sampleImageUrlForName(entry.name);
+      if (imageUrl) {
+        const icon = summary.appendChild(document.createElement("img"));
+        icon.src = imageUrl;
+        icon.alt = "";
+        icon.draggable = false;
+        icon.className = "file-browser-sample-icon";
+        summary.appendChild(document.createTextNode(` ${entry.name}`));
+      } else {
+        const emoji = sampleEmojiForName(entry.name);
+        summary.textContent = emoji ? `${emoji} ${entry.name}` : entry.name;
+      }
       const children = details.appendChild(document.createElement("div"));
       children.className = "file-browser-children";
       children.append(

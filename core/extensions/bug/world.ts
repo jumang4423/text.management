@@ -1,4 +1,5 @@
 import { CaterpillarBody, CREATURE_SIZE_SCALE } from "./body";
+import { BUG_BODY_PRESET, BUG_BODY_PRESETS } from "./appearance";
 import { BUG_POINTER_CONTACT_RADIUS, CaterpillarBrain } from "./brain";
 import {
   add,
@@ -131,6 +132,7 @@ export class BugWorld {
     this.snapshot = habitat.snapshot(performance.now());
     this.agents = Array.from({ length: CREATURE_COUNT }, (_, index) => ({
       body: new CaterpillarBody(this.spawnPosition(this.snapshot, index), {
+        ...BUG_BODY_PRESETS[BUG_BODY_PRESET],
         randomSeed: 0xb067a11 ^ Math.imul(index + 1, 0x9e3779b1),
       }),
       brain: new CaterpillarBrain(
