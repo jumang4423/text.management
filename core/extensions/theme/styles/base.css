@@ -78,9 +78,10 @@ body {
 .cm-sample-emoji-token {
   display: inline-block;
   position: relative;
+  margin-inline: var(--sample-emoji-layout-shift, 0ch);
   color: transparent !important;
   transform-origin: 50% 90%;
-  background: var(--sample-emoji-heatmap, transparent);
+  background: none !important;
 }
 
 .cm-sample-emoji-active {
@@ -102,8 +103,16 @@ body {
 }
 
 .cm-sample-emoji-playing {
-  box-shadow: inset 0 -3px 0
-    var(--color-livecode-active-event-background);
+  box-shadow: none;
+}
+
+/* The heatmap/active-event spans can wrap (rather than nest inside) the
+   emoji token. Suppress their underline and background there too. */
+.cm-pattern-heatmap:has(.cm-sample-emoji-token),
+.cm-livecode-active-event:has(.cm-sample-emoji-token) {
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
 }
 
 .cm-sample-emoji-token::before {
@@ -153,6 +162,10 @@ body {
   transform: translate(-50%, -50%);
   -webkit-text-fill-color: initial !important;
   filter: none;
+}
+
+.cm-sample-emoji-token[data-sample-image] {
+  background-clip: content-box;
 }
 
 .cm-sample-emoji-token[data-sample-image]::before {

@@ -441,6 +441,10 @@ const startleDurationMs = highlightReactionDurationMs;
 
 const highlightDecoration = Decoration.mark({
   attributes: {
+    // Keep the class so sample-emoji CSS can suppress this underline when
+    // it wraps (or nests inside) an emoji token. Without it the inline
+    // box-shadow matches no selector and the line persists.
+    class: "cm-livecode-active-event",
     style: activeHighlightStyle,
   },
 });

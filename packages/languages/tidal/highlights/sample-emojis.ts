@@ -21,9 +21,13 @@ import {
   sampleEmojiNames,
   sampleImageUrlForName,
 } from "./sample-emoji-config";
+import {
+  emojiSizeFor,
+  imageBoxWidthPct,
+  sampleLayoutShiftCh,
+} from "./sample-image-layout";
 
 const sampleNameCharacter = /[A-Za-z0-9_-]/;
-const emojiSizeMultiplier = 1.3;
 const emojiScaleRange = 2.1;
 const samplePattern = new RegExp(
   sampleEmojiNames
@@ -121,13 +125,29 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
             ? " cm-user-synth-emoji"
             : "";
           const imageClass = hasImage ? " cm-sample-image-token" : "";
-          const emojiSize =
-            sample.length * emojiSizeMultiplier * (definition.scale ?? 1);
-          // Image box width as % of the token so CSS `ch` units don't compound
-          // against the already-enlarged ::before font size.
+          const scale = definition.scale ?? 1;
+          const emojiSize = emojiSizeFor(scale);
           const imageBoxWidth = hasImage
-            ? (emojiSize / (sample.length + suffix.length)) * 100
+            ? imageBoxWidthPct(sample.length, suffix.length, scale)
             : 0;
+          // Symmetric layout shift (in ch, signed) so every token occupies
+          // the unified size minus the gap: short names push neighbours
+          // aside, long names pull them in.
+          const layoutShift = sampleLayoutShiftCh(
+            sample.length,
+            suffix.length,
+            scale
+          );
+          // Background highlight spans the visual width, not the text width.
+          const highlightWidth = imageBoxWidthPct(
+            sample.length,
+            suffix.length,
+            scale
+          );
+          // The shift is symmetric, so the whole token's center is the anchor.
+          const nameCenter = hasImage
+            ? 50
+            : (sample.length / (sample.length + suffix.length)) * 50;
           const decoration = Decoration.mark({
             class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}${imageClass}`,
             attributes: {
@@ -140,7 +160,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
               title: isUserSynthEmoji(definition)
                 ? `${sample} (user synth)`
                 : sample,
-              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%; --sample-emoji-name-center: ${(nameWidth / 2).toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}`,
+              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-name-width: ${nameWidth.toFixed(3)}%; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-layout-shift: ${layoutShift.toFixed(3)}ch; --sample-emoji-highlight-width: ${highlightWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}`,
             },
           });
           decorations.push(
