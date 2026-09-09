@@ -16,7 +16,8 @@ import "./style.css";
 export function toolbarConstructor(
   api: typeof ElectronAPI,
   configuration: Config,
-  version?: string
+  version?: string,
+  openSettings?: () => void
 ): Panel {
   let toolbarNode = document.createElement("div");
   toolbarNode.classList.add("cm-toolbar");
@@ -58,6 +59,16 @@ export function toolbarConstructor(
   };
   bugToggle.addEventListener("click", toggleBug);
   const offBugVisibility = onLivingCodeBugVisibilityChange(syncBugToggle);
+
+  if (openSettings) {
+    const settingsButton = toolbarLeft.appendChild(document.createElement("button"));
+    settingsButton.type = "button";
+    settingsButton.className = "cm-settings-button";
+    settingsButton.title = "Settings";
+    settingsButton.setAttribute("aria-label", "Settings");
+    settingsButton.innerHTML = '<svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" fill-rule="evenodd" d="M6 0h4v3h2V2h2v2h-1v2h3v4h-3v2h1v2h-2v-1h-2v3H6v-3H4v1H2v-2h1v-2H0V6h3V4H2V2h2v1h2V0zm0 6v4h4V6H6z"/></svg>';
+    settingsButton.addEventListener("click", openSettings);
+  }
 
   // Status indicators for future use: ◯◉✕
   let tidalInfo = new ToolbarMenu(

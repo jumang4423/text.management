@@ -25,6 +25,7 @@ import { fileSync } from "./file";
 import { EditorTabView } from "@core/extensions/layout/tabs/editor";
 import { AboutTabView } from "@core/extensions/layout/tabs/about";
 import { SampleFileBrowser } from "./browser";
+import { SettingsTabView, settingsTabID } from "./settings-tab";
 import { PoopSoundPlayer } from "./poop-sounds";
 import { MunchPlayer } from "./munch-sounds";
 import {
@@ -347,7 +348,13 @@ export class Editor {
     let tidalConsole = electronConsole();
     layout.panelArea.appendChild(tidalConsole.dom);
 
-    let toolbar = toolbarConstructor(api, configuration, tidalVersion);
+    let toolbar = toolbarConstructor(api, configuration, tidalVersion, () => {
+      if (layout.state.tabs[settingsTabID]) {
+        layout.dispatch({ current: settingsTabID });
+      } else {
+        layout.dispatch({ changes: [{ view: new SettingsTabView(layout, api) }] });
+      }
+    });
     layout.panelArea.appendChild(toolbar.dom);
 
     api.onTidalVersion((version) => {

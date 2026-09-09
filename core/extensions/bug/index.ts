@@ -16,7 +16,9 @@ export {
 
 type BugVisibilityListener = (visible: boolean) => void;
 
+const bugVisibilityStorageKey = "text-management:bug-visible";
 let bugVisible = true;
+try { bugVisible = localStorage.getItem(bugVisibilityStorageKey) !== "false"; } catch {}
 const bugVisibilityListeners = new Set<BugVisibilityListener>();
 
 export function isLivingCodeBugVisible() {
@@ -26,6 +28,7 @@ export function isLivingCodeBugVisible() {
 export function setLivingCodeBugVisible(visible: boolean) {
   if (bugVisible === visible) return;
   bugVisible = visible;
+  try { localStorage.setItem(bugVisibilityStorageKey, String(visible)); } catch {}
   for (const listener of bugVisibilityListeners) listener(visible);
 }
 

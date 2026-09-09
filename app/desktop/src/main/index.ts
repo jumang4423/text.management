@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, shell } from "electron";
 
 import { basename, extname, resolve } from "path";
 
@@ -22,14 +22,14 @@ import { wrapIPC } from "./ipcMain";
 import { connectDocuments } from "./documentSession";
 
 import { menu } from "./menu";
-import type { BrowserEntry } from "../ipc";
+import type { BrowserEntry, BrowserFolder } from "../ipc";
 
 const filesystem = new Filesystem();
 
 const settingsPath = resolve(app.getPath("userData"), "settings.json");
 const tidalWorkspace = "/Users/jumang4423/sc-dotfiles";
-const browserRoots = [
-  { path: resolve(tidalWorkspace, "sets"), openByDefault: true },
+let browserRoots: BrowserFolder[] = [
+  { path: resolve(tidalWorkspace, "sets"), openByDefault: false },
   { path: resolve(tidalWorkspace, "samples"), openByDefault: true },
   { path: resolve(tidalWorkspace, "tp-samples"), openByDefault: false },
   {
@@ -40,6 +40,7 @@ const browserRoots = [
     openByDefault: false,
   },
 ];
+const browserFoldersPath = resolve(app.getPath("userData"), "browser-folders.json");
 const audioExtensions = new Set([
   ".aif",
   ".aiff",
@@ -103,7 +104,10 @@ const createWindow = (configuration: Config) => {
           "browserTree",
           await Promise.all(
             browserRoots.map(({ path, openByDefault }) =>
-              readBrowserRoot(path, openByDefault)
+              readBrowserRoot(path, openByDefault).catch((error) => {
+                send("browserError", `Could not read ${path}: ${error}`);
+                return { kind: "folder" as const, name: basename(path), path, openByDefault, children: [] };
+              })
             )
           )
         );
@@ -111,6 +115,140 @@ const createWindow = (configuration: Config) => {
         send("browserError", `Could not read browser files: ${error}`);
       }
     };
+
+    let folderWrites = Promise.resolve();
+    const changeFolders = (change: (folders: BrowserFolder[]) => BrowserFolder[]) => {
+      const operation = folderWrites.then(async () => {
+        const paths = change(browserRoots);
+        await writeFile(browserFoldersPath + ".tmp", JSON.stringify(paths, null, 2));
+        await rename(browserFoldersPath + ".tmp", browserFoldersPath);
+        browserRoots = paths;
+        await sendBrowserTree();
+        return paths;
+      });
+      folderWrites = operation.then(() => {}, () => {});
+      return operation;
+    };
+    for (const channel of ["browserFolders:get", "browserFolders:add", "browserFolders:remove", "browserFolders:setOpen", "browserFiles:new"]) {
+      ipcMain.removeHandler(channel);
+      listeners.push(() => ipcMain.removeHandler(channel));
+    }
+    ipcMain.handle("browserFolders:get", () => browserRoots);
+    ipcMain.handle("browserFolders:add", async () => {
+      const result = await dialog.showOpenDialog(window, {
+        title: "Add displayed folders", properties: ["openDirectory", "multiSelections"],
+      });
+      if (result.canceled) return browserRoots;
+      return changeFolders((folders) => {
+        const next = [...folders];
+        for (const selected of result.filePaths) {
+          const path = resolve(selected);
+          if (!next.some((folder) => folder.path === path)) next.push({ path, openByDefault: false });
+        }
+        return next;
+      });
+    });
+    ipcMain.handle("browserFolders:remove", (_, path: unknown) => {
+      if (typeof path !== "string") throw Error("Invalid folder path");
+      return changeFolders((paths) => paths.filter((entry) => entry.path !== path));
+    });
+
+    ipcMain.handle("browserFolders:setOpen", (_, value: unknown) => {
+      if (!value || typeof value !== "object" || !("path" in value) || !("openByDefault" in value) ||
+          typeof value.path !== "string" || typeof value.openByDefault !== "boolean") throw Error("Invalid folder option");
+      const { path, openByDefault } = value;
+      return changeFolders((folders) => folders.map((folder) => folder.path === path ? { ...folder, openByDefault } : folder));
+    });
+
+    ipcMain.handle("browserFiles:new", async (_, folder: unknown) => {
+      if (typeof folder !== "string" || !isInsideBrowserRoots(folder)) throw Error("Invalid folder");
+      const entries = await readdir(folder, { withFileTypes: true });
+      if (!entries.some((entry) => entry.isFile() && entry.name.endsWith(".tidal"))) {
+        throw Error("This folder has no Tidal files");
+      }
+      const date = new Date();
+      const prefix = [date.getFullYear() % 100, date.getMonth() + 1, date.getDate()]
+        .map((value) => String(value).padStart(2, "0")).join("");
+      const existingNames = new Set(entries.map((entry) => entry.name));
+      let suggestedName = "untitled.tidal";
+      for (let number = 1; number <= 99; number++) {
+        const name = `${prefix}-${String(number).padStart(2, "0")}.tidal`;
+        if (!existingNames.has(name)) { suggestedName = name; break; }
+      }
+      const result = await dialog.showSaveDialog(window, {
+        title: "New Tidal file",
+        buttonLabel: "Create",
+        defaultPath: resolve(folder, suggestedName),
+        filters: [{ name: "Tidal", extensions: ["tidal"] }],
+        properties: ["showOverwriteConfirmation"],
+      });
+      if (result.canceled || !result.filePath) return null;
+      const path = result.filePath.endsWith(".tidal") ? result.filePath : result.filePath + ".tidal";
+      if (!isInsideBrowserRoots(path)) throw Error("Choose a displayed folder");
+      try {
+        await writeFile(path, "", { flag: "wx" });
+      } catch (error) {
+        await dialog.showMessageBox(window, {
+          type: "error", message: (error as NodeJS.ErrnoException).code === "EEXIST"
+            ? "A file with that name already exists."
+            : "Could not create file.",
+        });
+        return null;
+      }
+      filesystem.loadDoc(path);
+      await sendBrowserTree();
+      return path;
+    });
+
+    const fileActions = new Set<string>();
+    listeners.push(listen("browserFileMenu", ({ path }) => {
+      if (!isInsideBrowserRoots(path) || extname(path) !== ".tidal") return;
+      const run = async (action: "rename" | "remove") => {
+        if (fileActions.has(path)) return;
+        fileActions.add(path);
+        try {
+          const document = filesystem.getDocFromPath(path);
+          if (action === "rename") {
+            const result = await dialog.showSaveDialog(window, {
+              title: "Rename Tidal file", buttonLabel: "Rename", defaultPath: path,
+              filters: [{ name: "Tidal", extensions: ["tidal"] }],
+            });
+            if (result.canceled || !result.filePath) return;
+            const destination = result.filePath.endsWith(".tidal") ? result.filePath : result.filePath + ".tidal";
+            if (destination === path) return;
+            if (!isInsideBrowserRoots(destination)) throw Error("Choose a displayed folder");
+            if (filesystem.getDocFromPath(destination)) throw Error("That file is already open");
+            const move = async (source: string) => {
+              // Link first to reject existing destinations without overwriting.
+              await link(source, destination);
+              try { await unlink(source); }
+              catch (error) { await unlink(destination); throw error; }
+            };
+            if (document) await document.moveOnDisk(move, destination);
+            else await move(path);
+          } else {
+            const { response } = await dialog.showMessageBox(window, {
+              type: "warning",
+              message: `Move "${basename(path)}" to Trash?`,
+              detail: document?.needsSave ? "Unsaved changes will be discarded." : "You can restore it from Trash.",
+              buttons: ["Cancel", "Move to Trash"], defaultId: 0, cancelId: 0,
+            });
+            if (response !== 1) return;
+            if (document) {
+              await document.moveOnDisk((source) => shell.trashItem(source), null);
+              send("close", { id: document.id });
+            } else await shell.trashItem(path);
+          }
+          await sendBrowserTree();
+        } catch (error) {
+          await dialog.showMessageBox(window, { type: "error", message: "Could not update file", detail: String(error) });
+        } finally { fileActions.delete(path); }
+      };
+      Menu.buildFromTemplate([
+        { label: "Rename", click: () => { void run("rename"); } },
+        { label: "Remove", click: () => { void run("remove"); } },
+      ]).popup({ window });
+    }));
 
     listeners.push(listen("browserRefresh", sendBrowserTree));
     listeners.push(menu.on("refreshBrowser", sendBrowserTree));
@@ -284,7 +422,7 @@ const createWindow = (configuration: Config) => {
   });
 };
 
-import { readFile, readdir } from "fs/promises";
+import { readFile, readdir, writeFile, rename, link, unlink } from "fs/promises";
 
 function isInsideBrowserRoots(path: string) {
   const resolvedPath = resolve(path);
@@ -395,6 +533,21 @@ app.whenReady().then(async () => {
 
   settings.update(settingsData);
 
+  try {
+    const paths: unknown = JSON.parse(await readFile(browserFoldersPath, "utf-8"));
+    if (Array.isArray(paths)) {
+      const migrated: BrowserFolder[] = [];
+      for (const item of paths) {
+        const path = typeof item === "string" ? item : item?.path;
+        if (typeof path !== "string" || !path.startsWith("/") || migrated.some((folder) => folder.path === path)) continue;
+        migrated.push({ path, openByDefault: typeof item?.openByDefault === "boolean"
+          ? item.openByDefault : path === resolve(tidalWorkspace, "samples") });
+      }
+      browserRoots = migrated;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error("Could not load browser folders", error);
+  }
   createWindow(settings);
 
   // app.on("activate", () => {

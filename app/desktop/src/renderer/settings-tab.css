@@ -1,0 +1,85 @@
+.app-settings {
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-foreground, inherit);
+}
+.app-settings > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 560px;
+  margin-bottom: 12px;
+}
+.app-settings h2 { font: inherit; margin: 0; }
+.app-settings ul {
+  padding: 0;
+  list-style: none;
+  max-width: 560px;
+  margin: 0;
+  border: 3px solid #999999;
+}
+.app-settings ul:empty { display: none; }
+.app-settings li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgb(255 255 255 / 35%);
+}
+.app-settings li + li { border-top: 2px solid #bbbbbb; }
+.app-settings li > span { flex: 1; min-width: 0; }
+.app-settings strong { display: block; font-weight: normal; }
+.app-settings small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.65;
+  margin-top: 3px;
+  font-size: 11px;
+}
+.app-settings button {
+  box-sizing: border-box;
+  font: inherit;
+  color: #222222;
+  background: #ffffff;
+  border: 3px solid #999999;
+  border-radius: 0;
+  padding: 5px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.app-settings button.folder-remove {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.app-settings button:hover { background: #ffffff; border-color: #666666; }
+.app-settings button:active { background: #eeeeee; }
+.app-settings button:disabled { opacity: 0.4; cursor: wait; }
+.app-settings [role="status"] { max-width: 560px; font-size: 12px; }
+.app-settings [role="status"]:empty { display: none; }
+.cm-settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.cm-settings-button:focus-visible, .app-settings button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+
+.app-settings .folder-open-option { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 11px; cursor: pointer; }
+.app-settings .folder-open-option input { margin: 0; width: 14px; height: 14px; accent-color: #555555; }

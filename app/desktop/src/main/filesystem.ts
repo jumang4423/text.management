@@ -131,6 +131,22 @@ export class DesktopDocument extends EventEmitter<DocumentEvents> {
     await operation;
   }
 
+  async moveOnDisk(action: (path: string) => Promise<void>, newPath: string | null) {
+    const operation = this.saveQueue.then(async () => {
+      const path = this.path;
+      if (!path) throw Error("Document has no file path");
+      await action(path);
+      if (newPath !== null) {
+        this.fileStatus = { ...this.fileStatus, path: newPath };
+        this.emit("status", this.fileStatus as SavedStatus);
+      } else {
+        await this.close();
+      }
+    });
+    this.saveQueue = operation.catch(() => {});
+    await operation;
+  }
+
   update(update: DocumentUpdate) {
     if (!this.content) throw Error("Can't update an unloaded document");
 

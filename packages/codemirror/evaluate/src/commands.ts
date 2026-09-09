@@ -1,6 +1,7 @@
 import { EditorView, KeyBinding } from "@codemirror/view";
 
 import { evaluate } from "./evaluate";
+import { showSilenceAnimation } from "./silence-animation";
 
 export const evaluationKeymap: KeyBinding[] = [
   { key: "Shift-Enter", run: silenceBlock },
@@ -8,7 +9,8 @@ export const evaluationKeymap: KeyBinding[] = [
   { key: "Mod-.", run: hush },
 ];
 
-export function silenceBlock({ state, dispatch }: EditorView) {
+export function silenceBlock(view: EditorView) {
+  const { state, dispatch } = view;
   const { doc, selection } = state;
   const line = doc.lineAt(selection.main.head);
   if (!line.text.trim()) return true;
@@ -47,6 +49,7 @@ export function silenceBlock({ state, dispatch }: EditorView) {
   // Ambiguous blocks must not accidentally silence another part.
   if (channels.size === 1) {
     dispatch(evaluate(state, `d${[...channels][0]} $ silence`));
+    showSilenceAnimation(view, doc.line(first).from, doc.line(last).to);
   }
   return true;
 }

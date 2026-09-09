@@ -1,3 +1,4 @@
+import type { BrowserFolder } from "../ipc";
 import { contextBridge, ipcRenderer } from "electron";
 
 import { ToMainChannels, ToRendererChannels, Handler } from "../ipc";
@@ -28,6 +29,10 @@ function listen<K extends keyof ToRendererChannels>(channel: K) {
 export type { ElectronAPI };
 
 const ElectronAPI = {
+  getBrowserFolders: (): Promise<BrowserFolder[]> => ipcRenderer.invoke("browserFolders:get"),
+  addBrowserFolder: (): Promise<BrowserFolder[]> => ipcRenderer.invoke("browserFolders:add"),
+  removeBrowserFolder: (path: string): Promise<BrowserFolder[]> => ipcRenderer.invoke("browserFolders:remove", path),
+  setBrowserFolderOpen: (path: string, openByDefault: boolean): Promise<BrowserFolder[]> => ipcRenderer.invoke("browserFolders:setOpen", { path, openByDefault }),
   rendererReady: () => send("rendererReady", undefined),
   setCurrent(id: string | null) {
     send("current", { id });
@@ -63,7 +68,11 @@ const ElectronAPI = {
 
   newTab: () => send("newTab", undefined),
 
+  newBrowserFile: (path: string): Promise<string | null> => ipcRenderer.invoke("browserFiles:new", path),
+
   refreshBrowser: () => send("browserRefresh", undefined),
+
+  showBrowserFileMenu: (path: string) => send("browserFileMenu", { path }),
 
   openBrowserFile: (path: string) => send("browserOpen", { path }),
 

@@ -10,6 +10,7 @@ import "./browser.css";
 export class SampleFileBrowser {
   readonly dom: HTMLElement;
   private tree: HTMLElement;
+  private creatingInFolder: string | null = null;
   private status: HTMLElement;
   private audio = new Audio();
   private audioURL: string | null = null;
@@ -204,19 +205,48 @@ export class SampleFileBrowser {
   private renderEntry(entry: BrowserEntry, depth: number): HTMLElement {
     if (entry.kind === "folder") {
       const details = document.createElement("details");
-      details.open = entry.openByDefault ?? depth === 0;
+      details.open = entry.path === this.creatingInFolder || (entry.openByDefault ?? false);
       const summary = details.appendChild(document.createElement("summary"));
+      const folderLabel = summary.appendChild(document.createElement("span"));
+      folderLabel.className = "file-browser-folder-label";
       const imageUrl = sampleImageUrlForName(entry.name);
       if (imageUrl) {
-        const icon = summary.appendChild(document.createElement("img"));
+        const icon = folderLabel.appendChild(document.createElement("img"));
         icon.src = imageUrl;
         icon.alt = "";
         icon.draggable = false;
         icon.className = "file-browser-sample-icon";
-        summary.appendChild(document.createTextNode(` ${entry.name}`));
+        folderLabel.appendChild(document.createTextNode(` ${entry.name}`));
       } else {
         const emoji = sampleEmojiForName(entry.name);
-        summary.textContent = emoji ? `${emoji} ${entry.name}` : entry.name;
+        folderLabel.textContent = emoji ? `${emoji} ${entry.name}` : entry.name;
+      }
+      if (entry.children?.some((child) => child.kind === "tidal")) {
+        summary.classList.add("file-browser-folder-with-add");
+        const add = summary.appendChild(document.createElement("button"));
+        add.type = "button";
+        add.className = "file-browser-new-file";
+        add.textContent = "+";
+        add.title = "New Tidal file";
+        add.setAttribute("aria-label", `New Tidal file in ${entry.name}`);
+        add.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (this.creatingInFolder) return;
+          this.creatingInFolder = entry.path;
+          add.disabled = true;
+          try {
+            await this.api.newBrowserFile(entry.path);
+          } catch (error) {
+            this.status.textContent = String(error).includes("No handler registered")
+              ? "Restart the app to create files."
+              : "Could not create file.";
+            console.error("New Tidal file", error);
+          } finally {
+            this.creatingInFolder = null;
+            add.disabled = false;
+          }
+        });
       }
       const children = details.appendChild(document.createElement("div"));
       children.className = "file-browser-children";
@@ -230,6 +260,13 @@ export class SampleFileBrowser {
 
     const row = document.createElement("div");
     row.className = `file-browser-row ${entry.kind}`;
+    if (entry.kind === "tidal") {
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.api.showBrowserFileMenu(entry.path);
+      });
+    }
 
     if (entry.kind === "sample") {
       this.sampleRows.set(entry.path, row);

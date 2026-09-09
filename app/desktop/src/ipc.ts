@@ -26,6 +26,7 @@ export interface ToMainChannels {
   newTab: undefined;
   browserRefresh: undefined;
   browserOpen: { path: string };
+  browserFileMenu: { path: string };
   browserPreview: { path: string };
   browserCopy: { value: string };
   poopHit: { kind: PoopSoundKind };
@@ -52,4 +53,9 @@ export interface ToRendererChannels {
   browserTree: BrowserEntry[];
   browserSample: { path: string; mime: string; data: Uint8Array };
   browserError: string;
+}
+
+export interface BrowserFolder {
+  path: string;
+  openByDefault: boolean;
 }
