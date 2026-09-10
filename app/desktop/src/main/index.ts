@@ -373,6 +373,39 @@ const createWindow = (configuration: Config) => {
       })
     );
 
+    // Poll which d-numbers currently hold sounding patterns (see tmActiveDs
+    // in BootTidal.hs). The query runs straight through ghci, serialized
+    // with user evaluations, and only re-broadcasts on change. Failures
+    // (booting, restarting) keep the last known state.
+    let lastActiveOrbits: number[] | null = null;
+    let activeOrbitsPolling = false;
+    const pollActiveOrbits = async () => {
+      if (activeOrbitsPolling) return;
+      activeOrbitsPolling = true;
+      try {
+        const orbits = await tidal.queryActiveOrbits();
+        const known = lastActiveOrbits;
+        if (
+          known === null ||
+          orbits.length !== known.length ||
+          orbits.some((orbit, index) => orbit !== known[index])
+        ) {
+          lastActiveOrbits = orbits;
+          send("activeOrbits", orbits);
+        }
+      } catch {
+        // Keep the last known state.
+      } finally {
+        activeOrbitsPolling = false;
+      }
+    };
+    const activeOrbitsTimer = setInterval(() => {
+      void pollActiveOrbits();
+    }, 1000);
+    listeners.push(() => {
+      clearInterval(activeOrbitsTimer);
+    });
+
     listeners.push(listen("rendererReady", () => {
       void documents.restore();
       send("settingsData", configuration.data);

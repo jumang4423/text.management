@@ -127,7 +127,7 @@ export class GHCI extends Engine<GHCIEvents> {
     let child: ChildProcessWithoutNullStreams;
 
     if (!sourceLocation) {
-      child = spawn("ghci", ["-XOverloadedStrings", "-package", "hosc"], {
+      child = spawn("ghci", ["-XOverloadedStrings", "-package", "hosc", "-package", "containers"], {
         env: {
           ...process.env,
           editor_port: port,
@@ -231,6 +231,20 @@ export class GHCI extends Engine<GHCIEvents> {
 
   private outputFilters: RegExp[] = [];
 
+  // Ask the running Tidal Stream which d-numbers currently hold sounding
+  // patterns (see tmActiveDs in BootTidal.hs). Uses the wrapper directly so
+  // the marker line never leaks into the Tidal console messages.
+  async queryActiveOrbits(): Promise<number[]> {
+    if (!this.wrapper) return [];
+
+    for await (const response of this.wrapper.send("tmActiveDs")) {
+      const found = parseActiveOrbitsMarker(response.text);
+      if (found) return found;
+    }
+
+    return [];
+  }
+
   private async reloadSettings() {
     // TODO: Some sort of check that settings have actually changed?
     this.emit("message", {
@@ -284,7 +298,7 @@ export class GHCI extends Engine<GHCIEvents> {
   }
 }
 
-import { extractStatements } from "./parse";
+import { extractStatements, parseActiveOrbitsMarker } from "./parse";
 import { EOL } from "os";
 import { asMessages } from "@core/osc/utils";
 

@@ -66,11 +66,6 @@ interface CreatureAgent {
   musicBubbleUntil: number;
 }
 
-interface RecentBite {
-  from: number;
-  text: string;
-}
-
 const LOCOMOTION_TIME_SCALE = 5;
 const CREATURE_COUNT = 1;
 const POINTER_CLICK_RADIUS = 22;
@@ -106,7 +101,8 @@ export class BugWorld {
   private readonly random = new Random(0xb0611fe);
   private readonly droppings: Dropping[] = [];
   private readonly pulses: SoundPulseVisual[] = [];
-  private readonly recentBites: RecentBite[] = [];
+  // Last place eaten. The same place is not eaten consecutively.
+  private lastBiteFrom: number | null = null;
   private rhythmPulses: RhythmPulse[] = [];
   private readonly agents: CreatureAgent[];
   private snapshot: HabitatSnapshot;
@@ -192,7 +188,7 @@ export class BugWorld {
     }
     this.droppings.length = 0;
     this.pulses.length = 0;
-    this.recentBites.length = 0;
+    this.lastBiteFrom = null;
     this.rhythmPulses.length = 0;
     this.syncChewingDecorations();
     this.simulationAge = 0;
@@ -406,17 +402,12 @@ export class BugWorld {
         const owner = foodOwners.get(food.id);
         return !owner || owner === agent;
       });
-      const globallyFreshFoods = unclaimedFoods.filter((food) =>
-        this.recentBites.every((recent, recentIndex) => {
-          const sameArea = Math.abs(food.from - recent.from) < 88;
-          const sameFunction =
-            recentIndex < 5 &&
-            food.text.trim().toLowerCase() === recent.text;
-          return !sameArea && !sameFunction;
-        })
+      // The last place eaten is excluded, so the same place is never
+      // eaten consecutively.
+      const availableFoods = unclaimedFoods.filter(
+        (food) =>
+          this.lastBiteFrom === null || food.from !== this.lastBiteFrom
       );
-      const availableFoods =
-        globallyFreshFoods.length > 0 ? globallyFreshFoods : unclaimedFoods;
       const decision = agent.brain.update({
         now,
         deltaSeconds,
@@ -570,11 +561,7 @@ export class BugWorld {
         remaining: 0,
       });
       agent.brain.onEat(matter.nutrition, chewingFood);
-      this.recentBites.unshift({
-        from: chewingFood.from,
-        text: chewingFood.text.trim().toLowerCase(),
-      });
-      this.recentBites.splice(16);
+      this.lastBiteFrom = chewingFood.from;
       this.cancelOtherChews(agent);
       this.snapshotAge = 1;
     } else {

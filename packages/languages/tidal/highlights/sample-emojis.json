@@ -333,7 +333,7 @@
     "emoji": "💥"
   },
   "hmm": {
-    "emoji": "🤔"
+    "emoji": "❔"
   },
   "ho": {
     "emoji": "✨"
@@ -722,9 +722,24 @@
     "completionName": "strudelSine"
   },
   "funny": {
-    "image": "./images/funny.png"
+    "image": "./images/funny.png",
+    "imagesByIndex": {
+      "1": "./images/funny-1.png",
+      "4": "./images/funny-4.png",
+      "5": "./images/funny-5.png",
+      "7": "./images/funny-7.png",
+      "8": "./images/funny-8.png",
+      "10": "./images/funny-10.png",
+      "12": "./images/funny-12.png",
+      "13": "./images/funny-13.png",
+      "15": "./images/funny-15.png",
+      "19": "./images/funny-19.png"
+    }
   },
   "mc": {
     "image": "./images/mc.png"
+  },
+  "yume": {
+    "image": "./images/yume.png"
   }
 }

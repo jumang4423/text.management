@@ -10,6 +10,7 @@ export default {
   // A map from regular expressions to module names or to arrays of module names that allow to stub out resources with a single module
   moduleNameMapper: {
     "^@core/(.*)$": "<rootDir>/core/$1",
+    "^@management/cm-evaluate$": "<rootDir>/packages/codemirror/evaluate/src/index.ts",
     "^__mocks__/(.*)$": "<rootDir>/__mocks__/$1",
     "\\.(css|less)$": "<rootDir>/__mocks__/styles.ts",
     "\\.(png|jpg|jpeg|gif|webp|svg)$": "<rootDir>/__mocks__/file.ts",

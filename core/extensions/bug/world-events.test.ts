@@ -89,4 +89,37 @@ describe("BugWorld sound events", () => {
     expect(wiggles).toBeGreaterThanOrEqual(1);
     expect(releases).toBeGreaterThanOrEqual(1);
   });
+
+  it("does not eat the same place consecutively", () => {
+    const world = new BugWorld(
+      makeHabitat(),
+      {} as unknown as HTMLCanvasElement
+    );
+    // The mock snapshot always offers the same food, so without the
+    // constraint the creature would chew it again right away.
+    let munches = 0;
+    world.onMunch = () => {
+      munches += 1;
+    };
+
+    let now = 1_000;
+    const step = 1 / 60;
+    const stepWorld = () => {
+      now += step * 1_000;
+      (world as unknown as { step: (d: number, n: number) => void }).step(
+        step,
+        now
+      );
+    };
+    // Wait for the first chew to finish (about 15 munches per chew),
+    // plus a margin so the count has settled.
+    for (let i = 0; i < 60 * 60 && munches < 10; i += 1) stepWorld();
+    expect(munches).toBeGreaterThanOrEqual(10);
+    for (let i = 0; i < 10 * 60; i += 1) stepWorld();
+
+    // The only food is the last place eaten: no second chew ever.
+    const afterFirstChew = munches;
+    for (let i = 0; i < 120 * 60; i += 1) stepWorld();
+    expect(munches).toBe(afterFirstChew);
+  });
 });

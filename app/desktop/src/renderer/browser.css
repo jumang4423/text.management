@@ -157,12 +157,20 @@
 }
 
 .file-browser-tidal-name {
+  position: relative;
   flex: 1;
   min-width: 0;
-  padding: 0 var(--ui-space);
+  padding: 0 var(--ui-space) 0 calc(var(--ui-space) + 1.5em);
   color: var(--color-syntax-string) !important;
   text-align: left;
   cursor: copy;
+}
+
+.file-browser-tidal-name .file-browser-sample-icon {
+  position: absolute;
+  left: var(--ui-space);
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .file-browser footer {

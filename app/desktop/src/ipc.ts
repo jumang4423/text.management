@@ -49,6 +49,7 @@ export interface ToRendererChannels {
   toggleConsole: undefined;
   showAbout: string;
   tidalHighlight: HighlightEvent;
+  activeOrbits: number[];
   settingsData: any;
   browserTree: BrowserEntry[];
   browserSample: { path: string; mime: string; data: Uint8Array };

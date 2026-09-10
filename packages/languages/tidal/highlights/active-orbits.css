@@ -1,0 +1,23 @@
+/* The `dN` token itself when its pattern currently sounds in Tidal.
+   Gray border that fades out over the flash. Outline (not border) so the
+   text layout never shifts. */
+.cm-active-orbit-token {
+  outline: 2px solid gray;
+  outline-offset: 1px;
+  animation: cm-active-orbit-flash 250ms linear both;
+}
+
+@keyframes cm-active-orbit-flash {
+  from {
+    outline-color: rgb(128 128 128 / 100%);
+  }
+  to {
+    outline-color: rgb(128 128 128 / 0%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-active-orbit-token {
+    animation: none;
+  }
+}

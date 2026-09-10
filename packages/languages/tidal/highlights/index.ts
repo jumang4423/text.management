@@ -38,6 +38,7 @@ import {
   heatmapSleepEffect,
 } from "./state";
 import { sampleEmojiDecorations } from "./sample-emojis";
+import { mcMiningField } from "./mc-mining-state";
 import {
   reactionIntensity,
   springDirection,
@@ -270,6 +271,7 @@ export function highlighter(api: typeof ElectronAPI): Extension {
     heatmapSetField,
     heatmapNowField,
     hoveredMininotationField,
+    mcMiningField,
     Prec.lowest(heatmapDecorations),
     Prec.high(bracketBodyDecorations),
     Prec.highest(highlightDecorations),
@@ -627,7 +629,6 @@ const miniSymbolKinds: Record<string, MiniSyntaxKind> = {
   "~": "rest",
   ".": "group",
   "/": "slow",
-  "|": "choice",
   "!": "replicate",
   _: "elongate-step",
   "@": "elongate-count",

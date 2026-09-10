@@ -1,0 +1,23 @@
+/* Keep the existing sample mark, image dimensions, and editable source.
+   Mining changes only the block's fall and fade. */
+.cm-sample-emoji-token.cm-mc-mining-token[data-sample-image]::before {
+  background-image: var(--sample-emoji-image);
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  clip-path: var(--mc-mining-clip, none);
+  opacity: var(--mc-mining-opacity, 1);
+}
+
+.cm-sample-emoji-token.cm-mc-mining-token::after {
+  content: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-sample-emoji-token.cm-mc-mining-token[data-sample-image]::before {
+    background-image: var(--sample-emoji-image);
+    transform: translate(-50%, -50%);
+    clip-path: none;
+    opacity: 1;
+  }
+}

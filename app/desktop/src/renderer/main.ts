@@ -38,6 +38,11 @@ import {
   evaluationWithHighlights,
   highlighter,
 } from "@management/lang-tidal/highlights";
+import {
+  activeOrbitsHighlight,
+  flashActiveOrbitsEffect,
+  setActiveOrbitsEffect,
+} from "@management/lang-tidal/highlights/active-orbits";
 import { userSynthNames } from "@management/lang-tidal/highlights/sample-emoji-config";
 import { EditorView, keymap } from "@codemirror/view";
 import {
@@ -73,6 +78,20 @@ function currentEditorView() {
     ".editor-main .tab-content .cm-editor"
   );
   return editor ? EditorView.findFromDOM(editor) : null;
+}
+
+function allEditorViews() {
+  return [...document.querySelectorAll<HTMLElement>(
+    ".editor-main .tab-content .cm-editor"
+  )]
+    .map((editor) => {
+      try {
+        return EditorView.findFromDOM(editor);
+      } catch {
+        return null;
+      }
+    })
+    .filter((view): view is EditorView => view !== null);
 }
 
 function normalizedGhciInput(code: string) {
@@ -365,6 +384,30 @@ export class Editor {
       tidalConsole.toggleVisibility();
     });
 
+    api.onActiveOrbits((orbits) => {
+      for (const view of allEditorViews()) {
+        view.dispatch({ effects: setActiveOrbitsEffect.of(orbits) });
+      }
+    });
+
+    // Flash the active `dN` tokens once per cycle head; the CSS fades
+    // the border over 250ms, removal runs just after so it never cuts early.
+    let lastWholeCycle = -1;
+    api.onTidalNow((cycle) => {
+      const whole = Math.floor(Math.max(0, cycle));
+      if (whole === lastWholeCycle) return;
+      lastWholeCycle = whole;
+      const at = performance.now();
+      for (const view of allEditorViews()) {
+        view.dispatch({ effects: flashActiveOrbitsEffect.of(at) });
+      }
+      window.setTimeout(() => {
+        for (const view of allEditorViews()) {
+          view.dispatch({ effects: flashActiveOrbitsEffect.of(null) });
+        }
+      }, 270);
+    });
+
     api.onConsoleMessage((message) => {
       tidalConsole.update(message);
       recoilOnError(message);
@@ -392,6 +435,7 @@ export class Editor {
                     organicCodeContour,
                     evaluationWithHighlights(sendEvaluation),
                     highlighter(api),
+                    activeOrbitsHighlight(),
                     evaluation((evaluated) => {
                       tidalConsole.toggleVisibility(false);
                       rememberEvaluation(evaluated);

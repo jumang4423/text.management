@@ -86,7 +86,7 @@ body {
   background: none !important;
 }
 
-.cm-sample-emoji-active {
+.cm-sample-emoji-active::before {
   will-change: transform;
 }
 
@@ -129,7 +129,7 @@ body {
   aspect-ratio: 1;
   align-items: center;
   justify-content: center;
-  transform: translate(-50%, -50%);
+  transform: var(--sample-emoji-motion, translate(-50%, -50%));
   color: initial;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Departure Mono", sans-serif;
   font-size: var(--sample-emoji-size, 1em);
@@ -150,7 +150,7 @@ body {
   color: var(--color-syntax-string);
   font: inherit;
   white-space: nowrap;
-  text-shadow: var(--sample-emoji-shadow, none);
+  text-shadow: none;
   pointer-events: none;
 }
 
@@ -165,7 +165,7 @@ body {
   color: initial !important;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
   text-shadow: none !important;
-  transform: translate(-50%, -50%);
+  transform: var(--sample-emoji-motion, translate(-50%, -50%));
   -webkit-text-fill-color: initial !important;
   filter: none;
 }
@@ -182,7 +182,7 @@ body {
   width: var(--sample-emoji-image-width, 100%);
   height: auto;
   aspect-ratio: 1 / 1;
-  transform: translate(-50%, -50%);
+  transform: var(--sample-emoji-motion, translate(-50%, -50%));
   background-image: var(--sample-emoji-image);
   background-size: contain;
   background-repeat: no-repeat;

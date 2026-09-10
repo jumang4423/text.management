@@ -15,16 +15,20 @@ import {
   tidalReducedMotion,
 } from "./reaction";
 import {
-  hasSampleImage,
   isUserSynthEmoji,
   sampleEmojiDefinition,
   sampleEmojiNames,
   sampleImageUrlForName,
+  sampleScaleForName,
 } from "./sample-emoji-config";
 import {
   emojiSizeFor,
   sampleEmojiGapCh,
 } from "./sample-image-layout";
+import { mcMiningField, mcMiningKey } from "./mc-mining-state";
+import { mcMiningMotion } from "./mc-mining-motion";
+
+import "./mc-mining.css";
 
 const sampleNameCharacter = /[A-Za-z0-9_-]/;
 const emojiScaleRange = 2.1;
@@ -52,6 +56,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
     heatmapSetField,
     heatmapNowField,
     hoveredMininotationField,
+    mcMiningField,
     "selection",
   ],
   (state) => {
@@ -60,6 +65,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
     const highlights = state.field(highlightSetField);
     const heatmapHits = state.field(heatmapSetField);
     const now = state.field(heatmapNowField);
+    const miningStates = state.field(mcMiningField);
     let miniCursor = state.field(mininotationStringField).iter();
 
     while (miniCursor.value !== null) {
@@ -86,14 +92,29 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
 
           const definition = sampleEmojiDefinition(sample);
           if (!definition) continue;
-          if (definition.emoji === undefined && definition.image === undefined)
-            continue;
-          const emoji = definition.emoji ?? "";
-          const imageUrl = sampleImageUrlForName(sample);
-          const hasImage = imageUrl !== undefined && hasSampleImage(definition);
           const suffix = text
             .slice(relativeFrom + sample.length)
             .match(/^:-?\d+/)?.[0] ?? "";
+          // Per-index override (e.g. "funny:4") with fallback to the base
+          // image. Suffix parse is O(1); no regex/pattern growth per variant.
+          const sampleIndex =
+            suffix === ""
+              ? undefined
+              : Number.parseInt(suffix.slice(1), 10);
+          const normalizedIndex =
+            sampleIndex !== undefined && Number.isFinite(sampleIndex)
+              ? sampleIndex
+              : undefined;
+          const emoji = definition.emoji ?? "";
+          const imageUrl = sampleImageUrlForName(sample, normalizedIndex);
+          if (definition.emoji === undefined && imageUrl === undefined)
+            continue;
+          const hasImage = imageUrl !== undefined;
+          // The ":n" index is never shown next to the visual: the suffix
+          // still selects per-index images/scales and stays covered by the
+          // decoration range, but only the image/emoji is displayed.
+          // Raw text remains visible while editing (hover/selection).
+          const displaySuffix = "";
           const relativeTo = relativeFrom + sample.length + suffix.length;
           const highlight = latestHighlightForSample(
             highlights,
@@ -102,12 +123,24 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
             relativeTo,
             now
           );
+          const isMc = sample.toLowerCase() === "mc" && hasImage;
+          const mining = isMc && !tidalReducedMotion.matches
+            ? mcMiningMotion(
+                miningStates.get(mcMiningKey(mini.id, relativeFrom, relativeTo)),
+                now
+              )
+            : null;
           const motion =
             highlight !== null && !tidalReducedMotion.matches
               ? textReactionMotion(highlight, now, 0, emojiScaleRange, 2.25)
               : { transform: "none", textShadow: "none" };
+          // Preserve the shared spring exactly. The mining layer adds only
+          // the grass's vertical fall, outside the spring's scale/rotation.
+          const imageMotion = [mining?.transform ?? "none", motion.transform]
+            .filter((transform) => transform !== "none")
+            .join(" ");
           const activeClass =
-            motion.transform === "none" ? "" : " cm-sample-emoji-active";
+            imageMotion === "" ? "" : " cm-sample-emoji-active";
           const playingClass =
             highlight !== null && now - highlight.time <= highlight.duration
               ? " cm-sample-emoji-playing"
@@ -123,27 +156,28 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
             ? " cm-user-synth-emoji"
             : "";
           const imageClass = hasImage ? " cm-sample-image-token" : "";
-          const scale = definition.scale ?? 1;
+          const miningClass = isMc ? " cm-mc-mining-token" : "";
+          const scale = sampleScaleForName(sample, normalizedIndex) ?? 1;
           const emojiSize = emojiSizeFor(scale);
-          // Explicitly reserve separate visual and index columns. Hidden source
-          // name length must not determine where either column or *operators sit.
+          // Hidden source name length must not determine where the visual or
+          // *operators sit. The index reserves no column: only the visual shows.
           const suffixGap = 0;
-          const tokenWidth = emojiSize + suffixGap + suffix.length;
+          const tokenWidth = emojiSize + suffixGap + displaySuffix.length;
           const imageBoxWidth = (emojiSize / tokenWidth) * 100;
           const nameCenter = imageBoxWidth / 2;
           const decoration = Decoration.mark({
-            class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}${imageClass}`,
+            class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}${imageClass}${miningClass}`,
             attributes: {
               "data-sample-emoji": emoji,
               ...(hasImage
                 ? { "data-sample-image": imageUrl as string }
                 : {}),
-              "data-sample-suffix": suffix,
+              "data-sample-suffix": displaySuffix,
               "data-mini-id": mini.id.toString(),
               title: isUserSynthEmoji(definition)
                 ? `${sample} (user synth)`
                 : sample,
-              style: `transform: ${motion.transform}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-token-width: ${tokenWidth.toFixed(3)}ch; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-gap: ${sampleEmojiGapCh}ch; --sample-emoji-highlight-width: ${imageBoxWidth.toFixed(3)}%; --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}`,
+              style: `--sample-emoji-motion: translate(-50%, -50%)${imageMotion === "" ? "" : ` ${imageMotion}`}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-token-width: ${tokenWidth.toFixed(3)}ch; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-gap: ${sampleEmojiGapCh}ch; --sample-emoji-highlight-width: ${imageBoxWidth.toFixed(3)}%; --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}${mining ? `; ${mining.style}` : ""}`,
             },
           });
           decorations.push(

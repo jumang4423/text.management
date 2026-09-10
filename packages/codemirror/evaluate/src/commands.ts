@@ -20,7 +20,30 @@ export function silenceBlock(view: EditorView) {
   while (last < doc.lines && doc.line(last + 1).text.trim()) last++;
   const source = doc.sliceString(doc.line(first).from, doc.line(last).to);
 
-  // Ignore strings and comments, including nested Haskell block comments.
+  const channels = dChannelsInBlock(source);
+  // Ambiguous blocks must not accidentally silence another part.
+  if (channels.size === 1) {
+    dispatch(evaluate(state, `d${[...channels][0]} $ silence`));
+    showSilenceAnimation(view, doc.line(first).from, doc.line(last).to);
+  }
+  return true;
+}
+
+// Channel numbers (the N in `dN $`) referenced by a block of Tidal code.
+// Strings and comments, including nested Haskell block comments, are ignored.
+export function dChannelsInBlock(source: string): Set<string> {
+  return new Set(
+    Array.from(
+      maskTidalCode(source).matchAll(/^\s*d(\d+)\s*\$/gm),
+      (match) => match[1]
+    )
+  );
+}
+
+// The block source with strings and comments (including nested Haskell
+// block comments) blanked out. Newlines are preserved, so the result can
+// be split back into lines aligned with the input.
+export function maskTidalCode(source: string): string {
   let code = "";
   let depth = 0;
   let quoted = false;
@@ -44,14 +67,7 @@ export function silenceBlock(view: EditorView) {
       quoted = true; code += " ";
     } else code += char;
   }
-
-  const channels = new Set(Array.from(code.matchAll(/^\s*d(\d+)\s*\$/gm), (match) => match[1]));
-  // Ambiguous blocks must not accidentally silence another part.
-  if (channels.size === 1) {
-    dispatch(evaluate(state, `d${[...channels][0]} $ silence`));
-    showSilenceAnimation(view, doc.line(first).from, doc.line(last).to);
-  }
-  return true;
+  return code;
 }
 
 export function evaluateLine({ state, dispatch }: EditorView) {

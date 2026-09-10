@@ -3,6 +3,7 @@ import type { BrowserEntry } from "../ipc";
 import {
   sampleEmojiForName,
   sampleImageUrlForName,
+  sampleVariantImageUrlForName,
 } from "@management/lang-tidal/highlights/sample-emoji-config";
 
 import "./browser.css";
@@ -274,7 +275,19 @@ export class SampleFileBrowser {
       tidalName.type = "button";
       tidalName.className = "file-browser-tidal-name";
       const sampleName = entry.tidalName ?? "sample";
-      tidalName.textContent = sampleName;
+      // Explorer shows an icon only when a per-index override exists.
+      // No fallback to the bank image here.
+      const sampleIconUrl = sampleVariantImageUrlForName(sampleName);
+      if (sampleIconUrl) {
+        const icon = tidalName.appendChild(document.createElement("img"));
+        icon.src = sampleIconUrl;
+        icon.alt = "";
+        icon.draggable = false;
+        icon.className = "file-browser-sample-icon";
+        tidalName.appendChild(document.createTextNode(sampleName));
+      } else {
+        tidalName.textContent = sampleName;
+      }
       tidalName.title = `Preview and copy ${sampleName}`;
       tidalName.addEventListener("click", () => {
         this.previewSample(row, entry.path);

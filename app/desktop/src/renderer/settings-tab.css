@@ -6,7 +6,27 @@
   line-height: 1.4;
   color: var(--color-foreground, inherit);
 }
-.app-settings > header {
+.app-settings-bugs {
+  max-width: 560px;
+  margin-bottom: 20px;
+}
+.app-settings-bugs h2 {
+  margin-bottom: 8px;
+}
+.app-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.app-settings-option input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: #555555;
+}
+.app-settings-folders > header {
   display: flex;
   align-items: center;
   justify-content: space-between;

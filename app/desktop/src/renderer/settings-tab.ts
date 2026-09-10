@@ -1,6 +1,11 @@
 import type { BrowserFolder } from "../ipc";
 import { TabState } from "@core/extensions/layout/state";
 import { LayoutView, TabView } from "@core/extensions/layout/view";
+import {
+  isLivingCodeBugVisible,
+  onLivingCodeBugVisibilityChange,
+  setLivingCodeBugVisible,
+} from "@core/extensions/bug";
 import type { ElectronAPI } from "../preload";
 import "./settings-tab.css";
 
@@ -14,23 +19,44 @@ class SettingsTabState extends TabState<null> {
 }
 
 export class SettingsTabView extends TabView<null> {
+  private folders: HTMLElement;
   private list: HTMLElement;
   private status: HTMLElement;
   private busy = false;
   private disposed = false;
+  private offBugVisibility: (() => void) | null = null;
 
   constructor(layout: LayoutView, private api: typeof ElectronAPI) {
     super(layout, new SettingsTabState());
     this.dom.classList.add("app-settings");
-    const header = this.dom.appendChild(document.createElement("header"));
+    const bugs = this.dom.appendChild(document.createElement("section"));
+    bugs.className = "app-settings-bugs";
+    const bugsHeading = bugs.appendChild(document.createElement("h2"));
+    bugsHeading.textContent = "Bugs";
+    const bugOption = bugs.appendChild(document.createElement("label"));
+    bugOption.className = "app-settings-option";
+    const bugCheckbox = bugOption.appendChild(document.createElement("input"));
+    bugCheckbox.type = "checkbox";
+    bugCheckbox.checked = isLivingCodeBugVisible();
+    bugCheckbox.setAttribute("aria-label", "Show living code bug");
+    bugOption.append("Show living code bug");
+    bugCheckbox.onchange = () => {
+      setLivingCodeBugVisible(bugCheckbox.checked);
+    };
+    this.offBugVisibility = onLivingCodeBugVisibilityChange((visible) => {
+      bugCheckbox.checked = visible;
+    });
+    this.folders = this.dom.appendChild(document.createElement("section"));
+    this.folders.className = "app-settings-folders";
+    const header = this.folders.appendChild(document.createElement("header"));
     const heading = header.appendChild(document.createElement("h2"));
     heading.textContent = "Folders";
-    this.list = this.dom.appendChild(document.createElement("ul"));
     const add = header.appendChild(document.createElement("button"));
     add.type = "button";
     add.textContent = "+ Add folder";
     add.onclick = () => { void this.run(() => api.addBrowserFolder()); };
-    this.status = this.dom.appendChild(document.createElement("p"));
+    this.list = this.folders.appendChild(document.createElement("ul"));
+    this.status = this.folders.appendChild(document.createElement("p"));
     this.status.setAttribute("role", "status");
     void this.run(() => api.getBrowserFolders());
   }
@@ -38,7 +64,7 @@ export class SettingsTabView extends TabView<null> {
   private async run(action: () => Promise<BrowserFolder[]>) {
     if (this.busy || this.disposed) return;
     this.busy = true;
-    this.dom.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input").forEach((button) => { button.disabled = true; });
+    this.folders.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input").forEach((button) => { button.disabled = true; });
     this.status.textContent = "";
     try {
       const paths = await action();
@@ -81,9 +107,13 @@ export class SettingsTabView extends TabView<null> {
       }
     } finally {
       this.busy = false;
-      if (!this.disposed) this.dom.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input").forEach((button) => { button.disabled = false; });
+      if (!this.disposed) this.folders.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input").forEach((button) => { button.disabled = false; });
     }
   }
 
-  destroy() { this.disposed = true; }
+  destroy() {
+    this.disposed = true;
+    this.offBugVisibility?.();
+    this.offBugVisibility = null;
+  }
 }
