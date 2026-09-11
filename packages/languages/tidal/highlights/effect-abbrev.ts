@@ -9,7 +9,7 @@ import {
 } from "@codemirror/view";
 
 import { paragraphRange } from "@management/cm-evaluate";
-import { chewingRangesField } from "@core/extensions/bug/codemirrorHabitat";
+import { chewingDecorations } from "@core/extensions/bug/codemirrorHabitat";
 
 import "./effect-abbrev.css";
 
@@ -254,7 +254,7 @@ class EffectAbbrevWidget extends WidgetType {
 
 function readChewing(state: EditorState): DecorationSet | null {
   try {
-    return state.field(chewingRangesField);
+    return state.field(chewingDecorations);
   } catch {
     // The bug habitat is not mounted here; nothing chews.
     return null;

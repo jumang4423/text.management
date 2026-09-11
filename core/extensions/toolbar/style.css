@@ -40,6 +40,12 @@
   gap: var(--ui-space);
 }
 
+.cm-fps-meter {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .cm-menu {
   position: relative;
   margin: 0;

@@ -301,7 +301,8 @@ export class BugRenderer {
 
   private resize() {
     const rect = this.canvas.getBoundingClientRect();
-    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    // Cap below device pixels: slightly softer creature, much less fill.
+    const ratio = Math.min(1.5, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.round(rect.width * ratio));
     const height = Math.max(1, Math.round(rect.height * ratio));
     if (this.canvas.width !== width || this.canvas.height !== height) {

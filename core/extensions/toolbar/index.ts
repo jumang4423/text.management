@@ -71,6 +71,24 @@ export function toolbarConstructor(
   let tempoInfo = new ToolbarMenu(`◯ 0`, [], "timer");
   toolbarRight.appendChild(tempoInfo.dom);
 
+  // Display refresh rate, sampled twice a second. Capped at 120.
+  const fpsMeter = toolbarRight.appendChild(document.createElement("div"));
+  fpsMeter.className = "cm-fps-meter";
+  fpsMeter.setAttribute("aria-label", "Display refresh rate");
+  fpsMeter.textContent = "--";
+  let fpsFrames = 0;
+  let fpsSampledAt = performance.now();
+  const fpsTick = (now: number) => {
+    fpsFrames += 1;
+    if (now - fpsSampledAt >= 500) {
+      fpsMeter.textContent = String(formatFps(fpsFrames, now - fpsSampledAt));
+      fpsFrames = 0;
+      fpsSampledAt = now;
+    }
+    fpsFrame = requestAnimationFrame(fpsTick);
+  };
+  let fpsFrame = requestAnimationFrame(fpsTick);
+
   let lastWholeCycle: number | undefined;
   let sleeping = false;
   const reducedMotion = window.matchMedia(
@@ -167,6 +185,7 @@ export function toolbarConstructor(
       offTidalVersion();
       offTidalNow();
       offTidalHighlight();
+      cancelAnimationFrame(fpsFrame);
       heartbeat.getAnimations().forEach((animation) => animation.cancel());
       reducedMotion.removeEventListener(
         "change",
@@ -183,6 +202,12 @@ export function toolbarExtension(
   version?: string
 ) {
   return showPanel.of(() => toolbarConstructor(api, configuration, version));
+}
+
+// Frames per elapsed window, capped at the 120Hz target.
+export function formatFps(frames: number, elapsedMs: number): number {
+  if (!(elapsedMs > 0) || !(frames >= 0)) return 0;
+  return Math.min(120, Math.round((frames * 1000) / elapsedMs));
 }
 
 interface MenuItem {

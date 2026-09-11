@@ -62,7 +62,9 @@ export const setChewingRanges =
 const addBiteAnchor = StateEffect.define<BiteAnchor>();
 const removeBiteAnchor = StateEffect.define<string>();
 
-const chewingDecorations = StateField.define<DecorationSet>({
+// Read access to the chewing marks for overlays (e.g. effect
+// abbreviations) that paint chewing state on their own visuals.
+export const chewingDecorations = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(decorations, transaction) {
     let next = decorations.map(transaction.changes);
@@ -111,10 +113,6 @@ const biteAnchors = StateField.define<Map<string, number>>({
 });
 
 export const bugHabitatExtension = [chewingDecorations, biteAnchors];
-
-// Read access to the chewing marks for overlays (e.g. effect
-// abbreviations) that paint chewing state on their own visuals.
-export const chewingRangesField = chewingDecorations;
 
 // The paragraph block (same unit as evaluateBlock/silenceBlock: runs of
 // non-blank lines) containing [from, to), clamped into the document.

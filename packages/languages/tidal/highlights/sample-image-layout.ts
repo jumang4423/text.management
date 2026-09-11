@@ -11,7 +11,7 @@ export const sampleEmojiGapCh = 0;
 // Visual-only enlargement for the image/emoji itself. Layout (token
 // width, margins, highlight background) stays on the base size; only the
 // painted visual is scaled.
-export const sampleVisualScale = 1.3;
+export const sampleVisualScale = 1.5;
 
 export function emojiSizeFor(scale = 1) {
   return sampleEmojiFixedSize * scale;
