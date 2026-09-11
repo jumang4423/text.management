@@ -1,6 +1,6 @@
 import type { Rect, Vec2 } from "./math";
 
-export type FoodKind = "modifier" | "function";
+export type FoodKind = "modifier" | "function" | "argument";
 export type CreatureMode = "pet" | "nibble";
 export type Behaviour =
   | "hatching"
@@ -13,12 +13,17 @@ export type Behaviour =
 
 export type PoopSoundKind = "wiggle" | "release";
 
+// d-numbers (the N in `dN $`) that currently hold sounding patterns.
+// Provided per editor view by the host; null means unknown.
+export type ActiveOrbitsProvider = () => ReadonlySet<number> | null;
+
 export interface EdibleCode {
   id: string;
   from: number;
   to: number;
   text: string;
   kind: FoodKind;
+  argumentFunction?: string;
   nutrition: number;
   heat: number;
   rect: Rect;
@@ -51,6 +56,7 @@ export interface HabitatAdapter {
   stageToWorld(point: Vec2): Vec2;
   setChewing(edibles: readonly EdibleCode[]): void;
   eat(edible: EdibleCode): EatenMatter | null;
+  canRestore?(matter: EatenMatter): boolean;
   restore(matter: EatenMatter): boolean;
   pulseRandom(now: number): { position: Vec2; strength: number } | null;
   undoLastBite(): void;

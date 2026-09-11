@@ -379,11 +379,14 @@ const createWindow = (configuration: Config) => {
     // (booting, restarting) keep the last known state.
     let lastActiveOrbits: number[] | null = null;
     let activeOrbitsPolling = false;
+    let activeOrbitsWarned = false;
     const pollActiveOrbits = async () => {
       if (activeOrbitsPolling) return;
       activeOrbitsPolling = true;
       try {
         const orbits = await tidal.queryActiveOrbits();
+        if (orbits === null) throw new Error("active orbit query failed");
+        activeOrbitsWarned = false;
         const known = lastActiveOrbits;
         if (
           known === null ||
@@ -394,7 +397,14 @@ const createWindow = (configuration: Config) => {
           send("activeOrbits", orbits);
         }
       } catch {
-        // Keep the last known state.
+        // Keep the last known state. Warn once so a missing tmActiveDs
+        // (Tidal booted from an old BootTidal.hs) is visible.
+        if (!activeOrbitsWarned) {
+          activeOrbitsWarned = true;
+          console.warn(
+            "activeOrbits: query failed (is Tidal booted with tmActiveDs?)."
+          );
+        }
       } finally {
         activeOrbitsPolling = false;
       }

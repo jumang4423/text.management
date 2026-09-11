@@ -6,6 +6,11 @@ import {
   onLivingCodeBugVisibilityChange,
   setLivingCodeBugVisible,
 } from "@core/extensions/bug";
+import {
+  isBugReelModeEnabled,
+  setBugReelModeEnabled,
+  onBugReelModeChange,
+} from "@core/extensions/bug/reelMode";
 import type { ElectronAPI } from "../preload";
 import "./settings-tab.css";
 
@@ -24,6 +29,7 @@ export class SettingsTabView extends TabView<null> {
   private status: HTMLElement;
   private busy = false;
   private disposed = false;
+  private offReelMode: (() => void) | null = null;
   private offBugVisibility: (() => void) | null = null;
 
   constructor(layout: LayoutView, private api: typeof ElectronAPI) {
@@ -43,8 +49,22 @@ export class SettingsTabView extends TabView<null> {
     bugCheckbox.onchange = () => {
       setLivingCodeBugVisible(bugCheckbox.checked);
     };
-    this.offBugVisibility = onLivingCodeBugVisibilityChange((visible) => {
+    const reelOption = bugs.appendChild(document.createElement("label"));
+    reelOption.className = "app-settings-option";
+    const reelCheckbox = reelOption.appendChild(document.createElement("input"));
+    reelCheckbox.type = "checkbox";
+    reelCheckbox.checked = isBugReelModeEnabled();
+    reelOption.append("Reel mode");
+    const syncBugVisibility = (visible: boolean) => {
       bugCheckbox.checked = visible;
+      reelCheckbox.disabled = !visible;
+      reelOption.classList.toggle("is-disabled", !visible);
+    };
+    syncBugVisibility(isLivingCodeBugVisible());
+    this.offBugVisibility = onLivingCodeBugVisibilityChange(syncBugVisibility);
+    reelCheckbox.onchange = () => setBugReelModeEnabled(reelCheckbox.checked);
+    this.offReelMode = onBugReelModeChange((enabled) => {
+      reelCheckbox.checked = enabled;
     });
     this.folders = this.dom.appendChild(document.createElement("section"));
     this.folders.className = "app-settings-folders";
@@ -113,6 +133,8 @@ export class SettingsTabView extends TabView<null> {
 
   destroy() {
     this.disposed = true;
+    this.offReelMode?.();
+    this.offReelMode = null;
     this.offBugVisibility?.();
     this.offBugVisibility = null;
   }

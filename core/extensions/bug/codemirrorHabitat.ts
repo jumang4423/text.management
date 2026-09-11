@@ -1,19 +1,24 @@
 import { undo } from "@codemirror/commands";
-import { StateEffect, StateField } from "@codemirror/state";
+import { Annotation, StateEffect, StateField, type Text } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   type DecorationSet,
 } from "@codemirror/view";
 
+import { dChannelsInBlock, evaluate } from "@management/cm-evaluate";
+
 import { clamp, Random, type Rect, type Vec2 } from "./math";
 import {
   isSafeTidalFunctionContext,
   mutableTidalFunctionNames,
+  numericArgumentRanges,
   mutateTidalText,
 } from "./tidalMutation";
+import { mutatePatternStructure } from "./structuralMutation";
 import { isTidalFoodBlacklisted } from "./foodBlacklist";
 import type {
+  ActiveOrbitsProvider,
   EdibleCode,
   EatenMatter,
   FoodKind,
@@ -29,6 +34,7 @@ interface HeatSource {
 }
 
 interface CandidateRange {
+  argumentFunction?: string;
   from: number;
   to: number;
   kind: FoodKind;
@@ -48,6 +54,8 @@ const mutableFunctionPattern = new RegExp(
   `\\b(?:${mutableTidalFunctionNames.join("|")})\\b`,
   "g"
 );
+
+const bugDocumentChange = Annotation.define<boolean>();
 
 const setChewingRanges = StateEffect.define<readonly ChewingRange[]>();
 const addBiteAnchor = StateEffect.define<BiteAnchor>();
@@ -78,6 +86,16 @@ const biteAnchors = StateField.define<Map<string, number>>({
   update(anchors, transaction) {
     const next = new Map<string, number>();
     for (const [id, position] of anchors) {
+      if (transaction.docChanged && !transaction.annotation(bugDocumentChange)) {
+        const line = transaction.startState.doc.lineAt(position);
+        let touched = false;
+        transaction.changes.iterChangedRanges((from, to) => {
+          if (from <= line.to && to >= line.from) touched = true;
+        });
+        // An edited line no longer owns the missing code. Removing its anchor
+        // invalidates restoration immediately, including during a pending meal.
+        if (touched) continue;
+      }
       next.set(id, transaction.changes.mapPos(position, 1));
     }
     for (const effect of transaction.effects) {
@@ -93,6 +111,68 @@ const biteAnchors = StateField.define<Map<string, number>>({
 
 export const bugHabitatExtension = [chewingDecorations, biteAnchors];
 
+// The paragraph block (same unit as evaluateBlock/silenceBlock: runs of
+// non-blank lines) containing [from, to), clamped into the document.
+export function blockSpan(
+  doc: Text,
+  from: number,
+  to: number
+): { from: number; to: number } {
+  const safeFrom = Math.max(0, Math.min(from, doc.length));
+  const safeTo = Math.max(safeFrom, Math.min(to, doc.length));
+  let first = doc.lineAt(safeFrom).number;
+  let last = doc.lineAt(Math.max(safeFrom, safeTo - 1)).number;
+  while (first > 1 && doc.line(first - 1).text.trim().length > 0) first -= 1;
+  while (last < doc.lines && doc.line(last + 1).text.trim().length > 0) {
+    last += 1;
+  }
+  return { from: doc.line(first).from, to: doc.line(last).to };
+}
+
+// The d-channels referenced by the paragraph block containing [from, to).
+export function blockChannels(
+  doc: Text,
+  from: number,
+  to: number
+): Set<string> {
+  const span = blockSpan(doc, from, to);
+  return dChannelsInBlock(doc.sliceString(span.from, span.to));
+}
+
+export function channelsSounding(
+  channels: Set<string>,
+  active: ReadonlySet<number>
+): boolean {
+  for (const channel of channels) {
+    if (active.has(Number(channel))) return true;
+  }
+  return false;
+}
+
+// Keep only edibles whose block references a sounding d-number.
+// A null active set means unknown: keep everything (current behavior).
+export function filterSoundingEdibles<T extends { from: number; to: number }>(
+  doc: Text,
+  edibles: readonly T[],
+  active: ReadonlySet<number> | null
+): T[] {
+  if (active === null) return [...edibles];
+  return edibles.filter((edible) =>
+    channelsSounding(blockChannels(doc, edible.from, edible.to), active)
+  );
+}
+
+function readActiveOrbits(
+  provider: ActiveOrbitsProvider | undefined
+): ReadonlySet<number> | null {
+  if (!provider) return null;
+  try {
+    return provider() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export class CodeMirrorHabitat implements HabitatAdapter {
   private readonly random = new Random(0xd16e57);
   private readonly heatSources: HeatSource[] = [];
@@ -104,7 +184,10 @@ export class CodeMirrorHabitat implements HabitatAdapter {
 
   constructor(
     readonly view: EditorView,
-    private readonly stage: HTMLElement
+    private readonly stage: HTMLElement,
+    private readonly options: {
+      getActiveOrbits?: ActiveOrbitsProvider;
+    } = {}
   ) {
     view.scrollDOM.addEventListener("scroll", this.invalidateViewport, {
       passive: true,
@@ -231,7 +314,9 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     if (current !== edible.text) return null;
     if (isTidalFoodBlacklisted(current, edible.kind)) return null;
     const id = `${Date.now().toString(36)}-${edible.id}`;
-    const mutatedText = mutateTidalText(current, edible.kind, this.random);
+    const mutatedText = mutateTidalText(
+      current, edible.kind, this.random, undefined, edible.argumentFunction
+    );
     const matter: EatenMatter = {
       id,
       text: current,
@@ -240,6 +325,7 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       nutrition: edible.nutrition,
     };
     this.view.dispatch({
+      annotations: bugDocumentChange.of(true),
       changes: { from: edible.from, to: edible.to, insert: "" },
       effects: addBiteAnchor.of({ id, position: edible.from }),
     });
@@ -247,7 +333,14 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     return matter;
   }
 
+  canRestore(matter: EatenMatter) {
+    return this.view.state.field(biteAnchors).has(matter.id) &&
+      !isTidalFoodBlacklisted(matter.text, matter.kind) &&
+      !(matter.kind === "modifier" && /^\s*#\s*[A-Za-z][\w']*\s+-/.test(matter.mutatedText));
+  }
+
   restore(matter: EatenMatter) {
+    if (!this.canRestore(matter)) return false;
     const tracked = this.view.state.field(biteAnchors).get(matter.id);
     if (tracked === undefined) return false;
 
@@ -266,16 +359,55 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       return before === candidate || after === candidate;
     });
 
+    let changes = { from: position, to: position, insert: matter.mutatedText };
+    let evaluationPosition = position;
+    if (!alreadyRestored) {
+      const line = doc.lineAt(position);
+      // Another unfinished meal can leave a syntactically incomplete pattern.
+      // Wait until all other bites in this line have been restored.
+      const hasOtherBites = Array.from(this.view.state.field(biteAnchors)).some(
+        ([id, anchor]) => id !== matter.id && anchor >= line.from && anchor <= line.to
+      );
+      const block = blockSpan(doc, line.from, line.to);
+      const singleLineBlock = block.from === line.from && block.to === line.to;
+      if (singleLineBlock && !hasOtherBites && !matter.mutatedText.includes("\n")) {
+        const offset = position - line.from;
+        const restoredLine = line.text.slice(0, offset) + matter.mutatedText + line.text.slice(offset);
+        const mutatedLine = mutatePatternStructure(restoredLine, this.random);
+        if (mutatedLine !== null) {
+          // Restore and wrap in one editor transaction, so Undo is atomic and
+          // auto-evaluation only sees the completed expression.
+          changes = { from: line.from, to: line.to, insert: mutatedLine };
+          evaluationPosition = line.from;
+        }
+      }
+    }
     this.view.dispatch(
       alreadyRestored
         ? { effects: removeBiteAnchor.of(matter.id) }
-        : {
-            changes: { from: position, insert: matter.mutatedText },
-            effects: removeBiteAnchor.of(matter.id),
-          }
+        : { changes, annotations: bugDocumentChange.of(true), effects: removeBiteAnchor.of(matter.id) }
     );
     this.invalidateDocument();
+    if (!alreadyRestored) this.maybeEvaluateRestored(evaluationPosition, matter);
     return true;
+  }
+
+  // Re-evaluate the restored block, but only when its d-number currently
+  // sounds. Evaluating a silent line would fire unexpected sound, so
+  // anything else (and unknown active state) stays insert-only.
+  private maybeEvaluateRestored(position: number, matter: EatenMatter) {
+    const active = readActiveOrbits(this.options.getActiveOrbits);
+    if (active === null) return;
+    const doc = this.view.state.doc;
+    const span = blockSpan(
+      doc,
+      position,
+      position + matter.mutatedText.length
+    );
+    if (!channelsSounding(blockChannels(doc, span.from, span.to), active)) {
+      return;
+    }
+    this.view.dispatch(evaluate(this.view.state, span.from, span.to));
   }
 
   pulseRandom(now: number) {
@@ -368,7 +500,13 @@ export class CodeMirrorHabitat implements HabitatAdapter {
       }
     }
 
-    return foods;
+    // The bug only nibbles blocks whose d-number currently sounds.
+    // Unknown active state keeps everything (current behavior).
+    return filterSoundingEdibles(
+      doc,
+      foods,
+      readActiveOrbits(this.options.getActiveOrbits)
+    );
   }
 
   private rangesForLine(text: string, lineFrom: number) {
@@ -377,11 +515,11 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     const commentStart = this.commentStart(text);
     const code = commentStart < 0 ? text : text.slice(0, commentStart);
 
-    const addRange = (from: number, to: number, kind: FoodKind) => {
+    const addRange = (from: number, to: number, kind: FoodKind, argumentFunction?: string) => {
       if (to <= from) return;
       if (occupied.some((range) => from < range.to && to > range.from)) return;
       occupied.push({ from, to });
-      ranges.push({ from: lineFrom + from, to: lineFrom + to, kind });
+      ranges.push({ from: lineFrom + from, to: lineFrom + to, kind, argumentFunction });
     };
 
     for (const match of code.matchAll(/(?:^|\s)#\s*[A-Za-z][\w']*\s+-?(?:\d+(?:\.\d*)?|\.\d+)/g)) {
@@ -395,6 +533,9 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     }
 
     const codeWithoutStrings = this.maskStrings(code);
+    for (const argument of numericArgumentRanges(codeWithoutStrings)) {
+      addRange(argument.from, argument.to, "argument", argument.argumentFunction);
+    }
     for (const match of codeWithoutStrings.matchAll(mutableFunctionPattern)) {
       if (match.index === undefined) continue;
       if (!isSafeTidalFunctionContext(match[0], codeWithoutStrings, match.index)) {

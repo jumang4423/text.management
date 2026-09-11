@@ -20,8 +20,13 @@ export const setActiveOrbitsEffect = StateEffect.define<number[]>();
 
 // d-numbers (the N in `dN $`) that currently hold sounding patterns,
 // as reported by the running Tidal Stream (see tmActiveDs in BootTidal.hs).
-export const activeOrbitsField = StateField.define<ReadonlySet<number>>({
-  create: () => new Set<number>(),
+// Null means unknown (no successful query yet): consumers must treat that
+// as "keep current behavior", never as "nothing sounds", or the bug starves
+// on a session that predates the query helper.
+export const activeOrbitsField = StateField.define<
+  ReadonlySet<number> | null
+>({
+  create: () => null,
   update: (value, transaction) => {
     for (const effect of transaction.effects) {
       if (effect.is(setActiveOrbitsEffect)) return new Set(effect.value);
@@ -56,10 +61,10 @@ const activeTokenDecoration = Decoration.mark({
 // the document directly.
 export function activeDTokenRanges(
   doc: Text,
-  active: ReadonlySet<number>
+  active: ReadonlySet<number> | null
 ): { from: number; to: number }[] {
   const ranges: { from: number; to: number }[] = [];
-  if (active.size === 0) return ranges;
+  if (active === null || active.size === 0) return ranges;
   let number = 1;
   while (number <= doc.lines) {
     if (!doc.line(number).text.trim()) {
@@ -100,7 +105,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 export const activeOrbitsPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
-    private active: ReadonlySet<number>;
+    private active: ReadonlySet<number> | null;
     private flash: number | null;
 
     constructor(view: EditorView) {

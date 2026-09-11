@@ -20,6 +20,10 @@
   font-size: 12px;
   cursor: pointer;
 }
+.app-settings-option.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .app-settings-option input {
   margin: 0;
   width: 14px;

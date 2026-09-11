@@ -234,10 +234,12 @@ export class GHCI extends Engine<GHCIEvents> {
   // Ask the running Tidal Stream which d-numbers currently hold sounding
   // patterns (see tmActiveDs in BootTidal.hs). Uses the wrapper directly so
   // the marker line never leaks into the Tidal console messages.
-  async queryActiveOrbits(): Promise<number[]> {
-    if (!this.wrapper) return [];
+  // Returns null when the query itself fails (unknown helper, restarting).
+  async queryActiveOrbits(): Promise<number[] | null> {
+    if (!this.wrapper) return null;
 
     for await (const response of this.wrapper.send("tmActiveDs")) {
+      if (!response.success) return null;
       const found = parseActiveOrbitsMarker(response.text);
       if (found) return found;
     }

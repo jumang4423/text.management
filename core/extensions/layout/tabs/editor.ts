@@ -59,6 +59,7 @@ export class EditorTabView extends TabView<EditorState> {
     private hooks: {
       onPoopSound?: (kind: PoopSoundKind) => void;
       onMunch?: () => void;
+      getActiveOrbits?: (view: EditorView) => ReadonlySet<number> | null;
     } = {}
   ) {
     const state = EditorTabState.create(
@@ -89,6 +90,15 @@ export class EditorTabView extends TabView<EditorState> {
       ? new LivingCodeBug(this.editor, this.dom, {
           onPoopSound: this.hooks.onPoopSound,
           onMunch: this.hooks.onMunch,
+          getActiveOrbits: this.hooks.getActiveOrbits
+            ? () => {
+                try {
+                  return this.hooks.getActiveOrbits!(this.editor) ?? null;
+                } catch {
+                  return null;
+                }
+              }
+            : undefined,
         })
       : null;
     if (this.bug) {

@@ -32,6 +32,11 @@ describe("activeDTokenRanges", () => {
     expect(activeDTokenRanges(doc, new Set())).toEqual([]);
   });
 
+  test("marks nothing when the active set is unknown", () => {
+    const doc = Text.of(['d1 $ s "bd"']);
+    expect(activeDTokenRanges(doc, null)).toEqual([]);
+  });
+
   test("marks nothing when the active orbit is not referenced", () => {
     const doc = Text.of(['d1 $ s "bd"']);
     expect(activeDTokenRanges(doc, new Set([2]))).toEqual([]);

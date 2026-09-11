@@ -39,6 +39,7 @@ import {
   highlighter,
 } from "@management/lang-tidal/highlights";
 import {
+  activeOrbitsField,
   activeOrbitsHighlight,
   flashActiveOrbitsEffect,
   setActiveOrbitsEffect,
@@ -454,6 +455,13 @@ export class Editor {
                 {
                   onPoopSound: (kind) => poopSoundPlayer.play(kind),
                   onMunch: () => munchPlayer.play(),
+                  getActiveOrbits: (view) => {
+                    try {
+                      return view.state.field(activeOrbitsField);
+                    } catch {
+                      return null;
+                    }
+                  },
                 }
               ),
             },

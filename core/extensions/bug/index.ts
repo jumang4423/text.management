@@ -3,7 +3,11 @@ import type { EditorView } from "@codemirror/view";
 import { CodeMirrorHabitat } from "./codemirrorHabitat";
 import { BugWorld } from "./world";
 import type { Vec2 } from "./math";
-import type { PoopSoundKind, RhythmPulse } from "./types";
+import type {
+  ActiveOrbitsProvider,
+  PoopSoundKind,
+  RhythmPulse,
+} from "./types";
 
 import "./style.css";
 
@@ -52,6 +56,7 @@ export class LivingCodeBug {
     private readonly options: {
       onPoopSound?: (kind: PoopSoundKind) => void;
       onMunch?: () => void;
+      getActiveOrbits?: ActiveOrbitsProvider;
     } = {}
   ) {
     this.stage.classList.add("cm-bug-habitat");
@@ -71,7 +76,9 @@ export class LivingCodeBug {
     this.mounted = true;
 
     if (!this.habitat || !this.world) {
-      this.habitat = new CodeMirrorHabitat(this.view, this.stage);
+      this.habitat = new CodeMirrorHabitat(this.view, this.stage, {
+        getActiveOrbits: this.options.getActiveOrbits,
+      });
       this.world = new BugWorld(this.habitat, this.canvas);
       this.world.onPoopSound = this.options.onPoopSound ?? null;
       this.world.onMunch = this.options.onMunch ?? null;

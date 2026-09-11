@@ -24,6 +24,7 @@ import {
 import {
   emojiSizeFor,
   sampleEmojiGapCh,
+  sampleVisualScale,
 } from "./sample-image-layout";
 import { mcMiningField, mcMiningKey } from "./mc-mining-state";
 import { mcMiningMotion } from "./mc-mining-motion";
@@ -165,6 +166,10 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
           const tokenWidth = emojiSize + suffixGap + displaySuffix.length;
           const imageBoxWidth = (emojiSize / tokenWidth) * 100;
           const nameCenter = imageBoxWidth / 2;
+          // The painted visual alone is enlarged; token width, margins and
+          // highlight background stay on the base size.
+          const visualSize = emojiSize * sampleVisualScale;
+          const visualImageBoxWidth = imageBoxWidth * sampleVisualScale;
           const decoration = Decoration.mark({
             class: `cm-sample-emoji-token${activeClass}${playingClass}${userSynthClass}${imageClass}${miningClass}`,
             attributes: {
@@ -177,7 +182,7 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
               title: isUserSynthEmoji(definition)
                 ? `${sample} (user synth)`
                 : sample,
-              style: `--sample-emoji-motion: translate(-50%, -50%)${imageMotion === "" ? "" : ` ${imageMotion}`}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${emojiSize.toFixed(2)}ch; --sample-emoji-token-width: ${tokenWidth.toFixed(3)}ch; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-gap: ${sampleEmojiGapCh}ch; --sample-emoji-highlight-width: ${imageBoxWidth.toFixed(3)}%; --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${imageBoxWidth.toFixed(3)}%` : ""}${mining ? `; ${mining.style}` : ""}`,
+              style: `--sample-emoji-motion: translate(-50%, -50%)${imageMotion === "" ? "" : ` ${imageMotion}`}; --sample-emoji-shadow: ${motion.textShadow}; --sample-emoji-heatmap: ${heatmap}; --sample-emoji-size: ${visualSize.toFixed(2)}ch; --sample-emoji-token-width: ${tokenWidth.toFixed(3)}ch; --sample-emoji-name-center: ${nameCenter.toFixed(3)}%; --sample-emoji-gap: ${sampleEmojiGapCh}ch; --sample-emoji-highlight-width: ${imageBoxWidth.toFixed(3)}%; --sample-emoji-image-width: ${visualImageBoxWidth.toFixed(3)}%${hasImage ? `; --sample-emoji-image: url("${imageUrl}"); --sample-emoji-image-width: ${visualImageBoxWidth.toFixed(3)}%` : ""}${mining ? `; ${mining.style}` : ""}`,
             },
           });
           decorations.push(

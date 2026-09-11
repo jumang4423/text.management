@@ -1,3 +1,5 @@
+import { isTidalFoodBlacklisted } from "./foodBlacklist";
+import { isBugReelModeEnabled } from "./reelMode";
 import { clamp, type Random } from "./math";
 import type { FoodKind } from "./types";
 
@@ -132,6 +134,57 @@ function mutateFunction(source: string, random: Random) {
   return random.pick(alternatives) ?? source;
 }
 
+// Only direct numeric arguments with a known domain are edible. Expressions,
+// strings and unrelated numbers (including d-channel names) are left alone.
+const argumentDomains: Readonly<Record<string, "rate" | "count" | "probability">> = {
+  fast: "rate", slow: "rate", fastGap: "rate", density: "rate",
+  sparsity: "rate", hurry: "rate", loopAt: "rate",
+  inside: "rate", outside: "rate",
+  segment: "count", discretise: "count", chop: "count", striate: "count",
+  randslice: "count", iter: "count", scramble: "count", shuffle: "count",
+  stripe: "count", every: "count", chunk: "count", run: "count", scan: "count",
+  sometimesBy: "probability", someCyclesBy: "probability",
+};
+
+export function numericArgumentRanges(code: string) {
+  const pattern = new RegExp(
+    `\\b(${Object.keys(argumentDomains).join("|")})(\\s+)(\\d+(?:\\.\\d+)?)(?![\\w.'])(?=\\s|[)$]|$)`,
+    "g"
+  );
+  return Array.from(code.matchAll(pattern)).flatMap((match) => {
+    const from = match.index! + match[1].length + match[2].length;
+    const to = from + match[3].length;
+    // Do not nibble just the numerator or operand of an arithmetic expression.
+    if (/^\s*[/+*%<>=-]/.test(code.slice(to))) return [];
+    if (argumentDomains[match[1]] === "count" && match[3].includes(".")) return [];
+    return [{ from, to, argumentFunction: match[1] }];
+  });
+}
+
+function mutateArgument(
+  source: string, name: string | undefined, random: Random, reelMode: boolean
+) {
+  const domain = name ? argumentDomains[name] : undefined;
+  const original = Number(source);
+  if (!domain || !Number.isFinite(original)) return source;
+  const integer = domain === "count";
+  const minimum = domain === "probability" ? 0 : integer ? 1 : 0.0625;
+  const maximum = domain === "probability" ? 1 : reelMode ? 64 : 16;
+  let next = reelMode
+    ? random.between(minimum, maximum)
+    : original * (1 + (random.next() < 0.5 ? -1 : 1) * random.between(0.12, 0.4));
+  // Normal mode retains large existing arguments, with a proportional nudge.
+  const upper = reelMode || domain === "probability"
+    ? maximum
+    : Math.max(maximum, original * 1.4);
+  next = clamp(next, minimum, upper);
+  if (formatNumber(next, integer) === formatNumber(original, integer)) {
+    const step = integer ? 1 : Math.max(0.01, original * 0.18);
+    next = clamp(original + (original >= upper ? -step : step), minimum, upper);
+  }
+  return formatNumber(next, integer);
+}
+
 const unitIntervalControls = new Set([
   "begin",
   "delay",
@@ -161,7 +214,7 @@ function formatNumber(value: number, integer: boolean) {
   return Object.is(rounded, -0) ? "0" : rounded.toString();
 }
 
-function mutateModifier(source: string, random: Random) {
+function mutateModifier(source: string, random: Random, reelMode: boolean) {
   const match = source.match(
     /^(\s*#\s*([A-Za-z][\w']*)\s+)(-?(?:\d+(?:\.\d*)?|\.\d+))(\s*)$/
   );
@@ -180,7 +233,7 @@ function mutateModifier(source: string, random: Random) {
       ? direction * (integer ? 1 : random.between(0.12, 0.42))
       : original * (1 + direction * amount);
 
-  let minimum = -128;
+  let minimum = 0;
   let maximum = 128;
   if (unitIntervalControls.has(control)) {
     minimum = 0;
@@ -189,13 +242,27 @@ function mutateModifier(source: string, random: Random) {
     minimum = 0.05;
     maximum = 2;
   } else if (control === "speed") {
-    minimum = -4;
+    minimum = 0.05;
     maximum = 4;
   } else if (integer) {
     minimum = 0;
     maximum = 128;
   }
 
+  if (reelMode) {
+    // Draw a fresh value across the full domain instead of nudging the old one.
+    // Keep normalized controls and gain within their existing useful bounds.
+    if (control === "speed") {
+      minimum = 0.05;
+      maximum = 16;
+    } else if (!unitIntervalControls.has(control) && control !== "gain") {
+      minimum = 0;
+      maximum = 512;
+    }
+    next = random.between(minimum, maximum);
+  }
+
+  if (control === "segment" || control === "segments" || control === "coarse") minimum = 1;
   next = clamp(next, minimum, maximum);
   if (integer) next = Math.round(next);
 
@@ -209,7 +276,7 @@ function mutateModifier(source: string, random: Random) {
   }
 
   if (control === "speed" && Math.abs(next) < 0.05) {
-    next = direction * 0.125;
+    next = 0.125;
   }
 
   return `${prefix}${formatNumber(next, integer)}${suffix}`;
@@ -218,8 +285,12 @@ function mutateModifier(source: string, random: Random) {
 export function mutateTidalText(
   source: string,
   kind: FoodKind,
-  random: Random
+  random: Random,
+  reelMode = isBugReelModeEnabled(),
+  argumentFunction?: string
 ) {
-  if (kind === "modifier") return mutateModifier(source, random);
+  if (isTidalFoodBlacklisted(source, kind)) return source;
+  if (kind === "argument") return mutateArgument(source, argumentFunction, random, reelMode);
+  if (kind === "modifier") return mutateModifier(source, random, reelMode);
   return mutateFunction(source, random);
 }

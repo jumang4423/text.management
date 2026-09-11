@@ -1,3 +1,4 @@
+import { isBugReelModeEnabled } from "./reelMode";
 import { CaterpillarBody, CREATURE_SIZE_SCALE } from "./body";
 import { BUG_BODY_PRESET, BUG_BODY_PRESETS } from "./appearance";
 import { BUG_POINTER_CONTACT_RADIUS, CaterpillarBrain } from "./brain";
@@ -76,7 +77,7 @@ const TOILET_ARRIVAL_RADIUS = 52;
 const POOP_MIN_SPACING = 96;
 const POOP_ANIMATION_SECONDS = 1;
 const POOP_RETURN_SECONDS = 0.45;
-const CHEW_DURATION_SECONDS = 3;
+const chewDurationSeconds = () => isBugReelModeEnabled() ? 2 : 3;
 const MUNCH_INTERVAL_SECONDS = 0.2;
 
 export interface BugWorldMetrics extends CreatureVitals {
@@ -321,7 +322,7 @@ export class BugWorld {
         behaviour: agent.brain.behaviour,
         targetFood: this.showScent ? this.targetFood(agent) : null,
         chewAmount: agent.chew
-          ? clamp(agent.chew.elapsed / CHEW_DURATION_SECONDS)
+          ? clamp(agent.chew.elapsed / chewDurationSeconds())
           : 0,
         faceBubble:
           agent.poopMission?.settled
@@ -549,7 +550,7 @@ export class BugWorld {
       this.onMunch?.();
     }
 
-    if (agent.chew.elapsed < CHEW_DURATION_SECONDS) return;
+    if (agent.chew.elapsed < chewDurationSeconds()) return;
     let matter: EatenMatter | null = null;
     if (this.mode === "nibble") matter = this.habitat.eat(chewingFood);
     if (matter) {
@@ -642,6 +643,7 @@ export class BugWorld {
     });
     this.onPoopSound?.("release");
     agent.poopMission = null;
+    if (isBugReelModeEnabled()) agent.brain.starve();
     const musicAt = performance.now() + POST_POOP_MUSIC_DELAY_MS;
     agent.musicBubbleAt = musicAt;
     agent.musicBubbleUntil = musicAt + POST_POOP_MUSIC_HOLD_MS;
@@ -697,6 +699,15 @@ export class BugWorld {
   private updateDroppings(deltaSeconds: number) {
     for (let index = this.droppings.length - 1; index >= 0; index -= 1) {
       const dropping = this.droppings[index];
+      if (
+        dropping.returnProgress === null && dropping.fadeProgress == null &&
+        dropping.matter && this.habitat.canRestore?.(dropping.matter) === false
+      ) dropping.fadeProgress = 0;
+      if (dropping.fadeProgress != null) {
+        dropping.fadeProgress = clamp(dropping.fadeProgress + deltaSeconds / 0.5);
+        if (dropping.fadeProgress >= 1) this.droppings.splice(index, 1);
+        continue;
+      }
       dropping.age += deltaSeconds;
       if (dropping.returnProgress === null) continue;
 
@@ -710,7 +721,11 @@ export class BugWorld {
   }
 
   private beginDroppingReturn(dropping: Dropping) {
-    if (!dropping.matter || dropping.returnProgress !== null) return;
+    if (!dropping.matter || dropping.returnProgress !== null || dropping.fadeProgress != null) return;
+    if (this.habitat.canRestore?.(dropping.matter) === false) {
+      dropping.fadeProgress = 0;
+      return;
+    }
     if (!this.habitat.restore(dropping.matter)) return;
     dropping.returnProgress = 0;
   }

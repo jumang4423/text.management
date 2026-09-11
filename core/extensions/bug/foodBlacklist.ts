@@ -13,7 +13,7 @@ export interface TidalFoodBlacklist {
 export const TIDAL_FOOD_BLACKLIST: TidalFoodBlacklist = {
   // These can mute a voice outright, select a missing sample, invalidate a
   // slice, or route events away even when the expression still type-checks.
-  controls: ["gain", "n", "orbit", "begin", "end"],
+  controls: ["gain", "n", "orbit", "begin", "end", "legato"],
   functions: [],
   exact: [],
 };

@@ -205,6 +205,7 @@ export interface Dropping {
   size: number;
   rotation: number;
   returnProgress: number | null;
+  fadeProgress?: number;
 }
 
 export interface SoundPulseVisual {
@@ -405,7 +406,7 @@ export class BugRenderer {
       context.globalAlpha = Math.max(
         0,
         1 - Math.pow(returnProgress, 1.35)
-      );
+      ) * (1 - (dropping.fadeProgress ?? 0));
       context.translate(
         lerp(dropping.origin.x, x, emergence) + spiralX,
         lerp(dropping.origin.y, y, emergence) + spiralY
@@ -1047,6 +1048,7 @@ export function droppingAtPoint(
   return (
     droppings.find(
       (dropping) =>
+        dropping.fadeProgress == null &&
         distance(dropping.position, point) <=
         Math.max(
           radius,
