@@ -1,4 +1,5 @@
 import { EditorView, KeyBinding } from "@codemirror/view";
+import type { Text } from "@codemirror/state";
 
 import { evaluate } from "./evaluate";
 import { showSilenceAnimation } from "./silence-animation";
@@ -27,6 +28,22 @@ export function silenceBlock(view: EditorView) {
     showSilenceAnimation(view, doc.line(first).from, doc.line(last).to);
   }
   return true;
+}
+
+// The paragraph block (runs of non-blank lines) containing pos, clamped
+// into the document. Shared unit of evaluate/silence/reveal.
+export function paragraphRange(
+  doc: Text,
+  pos: number
+): { from: number; to: number } {
+  const safe = Math.max(0, Math.min(pos, doc.length));
+  let first = doc.lineAt(safe).number;
+  let last = first;
+  while (first > 1 && doc.line(first - 1).text.trim().length > 0) first -= 1;
+  while (last < doc.lines && doc.line(last + 1).text.trim().length > 0) {
+    last += 1;
+  }
+  return { from: doc.line(first).from, to: doc.line(last).to };
 }
 
 // Channel numbers (the N in `dN $`) referenced by a block of Tidal code.

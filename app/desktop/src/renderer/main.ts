@@ -33,6 +33,7 @@ import {
   setTidalFunctionCompletions,
   setTidalSampleCompletions,
 } from "@management/lang-tidal/completions";
+import { cpsSlider } from "@management/lang-tidal/cps-slider";
 
 import {
   evaluationWithHighlights,
@@ -437,6 +438,7 @@ export class Editor {
                     evaluationWithHighlights(sendEvaluation),
                     highlighter(api),
                     activeOrbitsHighlight(),
+                    cpsSlider(),
                     evaluation((evaluated) => {
                       tidalConsole.toggleVisibility(false);
                       rememberEvaluation(evaluated);

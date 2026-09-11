@@ -7,7 +7,6 @@ import {
   heatmapNowField,
   heatmapSetField,
   highlightSetField,
-  hoveredMininotationField,
   mininotationStringField,
 } from "./state";
 import {
@@ -26,6 +25,7 @@ import {
   sampleEmojiGapCh,
   sampleVisualScale,
 } from "./sample-image-layout";
+import { paragraphRange } from "@management/cm-evaluate";
 import { mcMiningField, mcMiningKey } from "./mc-mining-state";
 import { mcMiningMotion } from "./mc-mining-motion";
 
@@ -56,13 +56,16 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
     highlightSetField,
     heatmapSetField,
     heatmapNowField,
-    hoveredMininotationField,
     mcMiningField,
     "selection",
   ],
   (state) => {
     const decorations: Range<Decoration>[] = [];
-    const hoveredMiniID = state.field(hoveredMininotationField);
+    // The cursor block shows source: editing happens there, everything
+    // else shows visuals. Same rule as effect abbreviation.
+    const cursorBlocks = state.selection.ranges.map((range) =>
+      paragraphRange(state.doc, range.head)
+    );
     const highlights = state.field(highlightSetField);
     const heatmapHits = state.field(heatmapSetField);
     const now = state.field(heatmapNowField);
@@ -72,7 +75,8 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
     while (miniCursor.value !== null) {
       const { from, to, value: mini } = miniCursor;
       const revealSource =
-        hoveredMiniID === mini.id || selectionTouchesRange(state, from, to);
+        selectionTouchesRange(state, from, to) ||
+        cursorBlocks.some((block) => from < block.to && to > block.from);
 
       if (!revealSource) {
         const text = state.doc.sliceString(from, to);
@@ -166,6 +170,9 @@ export const sampleEmojiDecorations = EditorView.decorations.compute(
           const tokenWidth = emojiSize + suffixGap + displaySuffix.length;
           const imageBoxWidth = (emojiSize / tokenWidth) * 100;
           const nameCenter = imageBoxWidth / 2;
+          // The painted visual alone is enlarged; token width, margins and
+          // highlight background stay on the base size. Sustained dense
+          // triggers charge it up further (sparse loops stay as-is).
           // The painted visual alone is enlarged; token width, margins and
           // highlight background stay on the base size.
           const visualSize = emojiSize * sampleVisualScale;

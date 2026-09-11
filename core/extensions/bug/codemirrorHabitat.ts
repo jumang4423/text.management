@@ -57,7 +57,8 @@ const mutableFunctionPattern = new RegExp(
 
 const bugDocumentChange = Annotation.define<boolean>();
 
-const setChewingRanges = StateEffect.define<readonly ChewingRange[]>();
+export const setChewingRanges =
+  StateEffect.define<readonly ChewingRange[]>();
 const addBiteAnchor = StateEffect.define<BiteAnchor>();
 const removeBiteAnchor = StateEffect.define<string>();
 
@@ -110,6 +111,10 @@ const biteAnchors = StateField.define<Map<string, number>>({
 });
 
 export const bugHabitatExtension = [chewingDecorations, biteAnchors];
+
+// Read access to the chewing marks for overlays (e.g. effect
+// abbreviations) that paint chewing state on their own visuals.
+export const chewingRangesField = chewingDecorations;
 
 // The paragraph block (same unit as evaluateBlock/silenceBlock: runs of
 // non-blank lines) containing [from, to), clamped into the document.
@@ -447,6 +452,60 @@ export class CodeMirrorHabitat implements HabitatAdapter {
     this.refreshViewport();
   };
 
+  // Measured food geometry. The precise path reads real DOM fragments;
+  // replace widgets (effect abbreviations, sliders) can collapse a range
+  // to zero area, in which case estimate from the caret plus a monospace
+  // advance instead of dropping the food. Any DOM failure also falls
+  // through: this runs every animation frame and must never throw.
+  private foodRect(
+    scroll: HTMLElement,
+    scrollRect: { left: number; top: number },
+    from: number,
+    to: number
+  ): Rect | null {
+    try {
+      const start = this.view.domAtPos(from);
+      const end = this.view.domAtPos(to);
+      const domRange = this.view.dom.ownerDocument.createRange();
+      domRange.setStart(start.node, start.offset);
+      domRange.setEnd(end.node, end.offset);
+      // A modifier can span wrapped rows. Aim at its largest real fragment,
+      // not the empty space inside a rectangle enclosing multiple rows.
+      const fragments = Array.from(domRange.getClientRects()).filter(
+        (rect) => rect.width > 0 && rect.height > 0
+      );
+      const bounds = fragments.sort((a, b) => b.width - a.width)[0];
+      if (bounds) {
+        return {
+          x: bounds.left - scrollRect.left + scroll.scrollLeft,
+          y: bounds.top - scrollRect.top + scroll.scrollTop,
+          width: bounds.width,
+          height: bounds.height,
+        };
+      }
+    } catch {
+      // Fall through to the estimate below.
+    }
+    let coords: { left: number; top: number; bottom: number } | null = null;
+    try {
+      coords = this.view.coordsAtPos(from);
+    } catch {
+      coords = null;
+    }
+    if (!coords) return null;
+    const height = coords.bottom - coords.top;
+    if (!(height > 0)) return null;
+    return {
+      x: coords.left - scrollRect.left + scroll.scrollLeft,
+      y: coords.top - scrollRect.top + scroll.scrollTop,
+      width: Math.max(
+        8,
+        (to - from) * this.view.defaultCharacterWidth
+      ),
+      height,
+    };
+  }
+
   private extractEdibles(now: number) {
     const foods: EdibleCode[] = [];
     const doc = this.view.state.doc;
@@ -469,23 +528,8 @@ export class CodeMirrorHabitat implements HabitatAdapter {
         )) continue;
         const text = doc.sliceString(range.from, range.to);
         if (!text.trim() || isTidalFoodBlacklisted(text, range.kind)) continue;
-        const start = this.view.domAtPos(range.from);
-        const end = this.view.domAtPos(range.to);
-        const domRange = this.view.dom.ownerDocument.createRange();
-        domRange.setStart(start.node, start.offset);
-        domRange.setEnd(end.node, end.offset);
-        // A modifier can span wrapped rows. Aim at its largest real fragment,
-        // not the empty space inside a rectangle enclosing multiple rows.
-        const fragments = Array.from(domRange.getClientRects())
-          .filter((rect) => rect.width > 0 && rect.height > 0);
-        const bounds = fragments.sort((a, b) => b.width - a.width)[0];
-        if (!bounds) continue;
-        const rect: Rect = {
-          x: bounds.left - scrollRect.left + scroll.scrollLeft,
-          y: bounds.top - scrollRect.top + scroll.scrollTop,
-          width: bounds.width,
-          height: bounds.height,
-        };
+        const rect = this.foodRect(scroll, scrollRect, range.from, range.to);
+        if (!rect) continue;
         const length = range.to - range.from;
         const heat = this.heatForRange(range.from, range.to, now);
         const kindNutrition = range.kind === "modifier" ? 0.72 : 0.68;

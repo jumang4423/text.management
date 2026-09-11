@@ -11,6 +11,7 @@ export default {
   moduleNameMapper: {
     "^@core/(.*)$": "<rootDir>/core/$1",
     "^@management/cm-evaluate$": "<rootDir>/packages/codemirror/evaluate/src/index.ts",
+    "^(\\.{1,2}/.*)\\.js$": "$1",
     "^__mocks__/(.*)$": "<rootDir>/__mocks__/$1",
     "\\.(css|less)$": "<rootDir>/__mocks__/styles.ts",
     "\\.(png|jpg|jpeg|gif|webp|svg)$": "<rootDir>/__mocks__/file.ts",

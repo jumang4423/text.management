@@ -1,0 +1,79 @@
+.tm-cps-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px;
+  vertical-align: middle;
+}
+
+/* Minecraft-style chunky slider: square corners, black outline, bevels. */
+.tm-cps-slider input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  outline: none;
+  cursor: pointer;
+}
+
+.tm-cps-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  background: #c9c9c9;
+  border: 2px solid #000;
+  box-shadow:
+    inset 2px 2px 0 rgb(0 0 0 / 25%),
+    inset -1px -1px 0 rgb(255 255 255 / 60%);
+  border-radius: 0;
+}
+
+.tm-cps-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 20px;
+  margin-top: -7px;
+  background-color: #c6c6c6;
+  border: 2px solid #000;
+  box-shadow:
+    inset 2px 2px 0 rgb(255 255 255 / 70%),
+    inset -2px -2px 0 rgb(0 0 0 / 40%);
+  border-radius: 0;
+  cursor: ew-resize;
+  image-rendering: pixelated;
+}
+
+.tm-cps-slider input[type="range"]::-moz-range-track {
+  height: 10px;
+  background: #c9c9c9;
+  border: 2px solid #000;
+  box-shadow:
+    inset 2px 2px 0 rgb(0 0 0 / 25%),
+    inset -1px -1px 0 rgb(255 255 255 / 60%);
+  border-radius: 0;
+}
+
+.tm-cps-slider input[type="range"]::-moz-range-thumb {
+  width: 8px;
+  height: 16px;
+  background-color: #c6c6c6;
+  border: 2px solid #000;
+  box-shadow:
+    inset 2px 2px 0 rgb(255 255 255 / 70%),
+    inset -2px -2px 0 rgb(0 0 0 / 40%);
+  border-radius: 0;
+  cursor: ew-resize;
+}
+
+.tm-cps-slider input[type="range"]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.tm-cps-slider-bpm {
+  min-width: 3ch;
+  font: inherit;
+  opacity: 0.65;
+}

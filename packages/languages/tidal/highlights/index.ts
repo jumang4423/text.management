@@ -38,6 +38,7 @@ import {
   heatmapSleepEffect,
 } from "./state";
 import { sampleEmojiDecorations } from "./sample-emojis";
+import { effectAbbrev } from "./effect-abbrev";
 import { mcMiningField } from "./mc-mining-state";
 import {
   reactionIntensity,
@@ -276,6 +277,7 @@ export function highlighter(api: typeof ElectronAPI): Extension {
     Prec.high(bracketBodyDecorations),
     Prec.highest(highlightDecorations),
     Prec.lowest(sampleEmojiDecorations),
+    Prec.lowest(effectAbbrev()),
   ];
 }
 

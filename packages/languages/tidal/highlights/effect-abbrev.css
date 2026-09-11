@@ -1,0 +1,17 @@
+/* Abbreviated `# effect ...` chain. The source stays in the document;
+   only this compact form paints, dimmed as secondary info. Full text is
+   one hover (title) away. */
+.cm-effect-abbrev {
+  opacity: 0.55;
+}
+
+/* The bug is chewing here: same chomp as chewing source text. */
+.cm-effect-abbrev-chewing {
+  display: inline-block;
+  transform-origin: 50% 55%;
+  background: #ffffff;
+  box-shadow: -2px 0 #ffffff, 2px 0 #ffffff;
+  animation: bug-code-chew 230ms steps(2, end) infinite;
+  will-change: transform;
+  opacity: 1;
+}
